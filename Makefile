@@ -29,7 +29,7 @@ LINK = 			$(CC)
 C_STD =			c99
 CFLAGS =		-I$(PATHS) -Wall -Wextra -pedantic $(ARCH) -std=$(C_STD) -D_POSIX_C_SOURCE=200809L
 
-LDFLAGS =
+LDFLAGS =		$(ARCH)
 LDLIBS =
 
 COMPILE =		$(CC) $(CFLAGS) -MT $@ -MP -MMD -MF $(PATHD)/$*.Td
@@ -59,7 +59,7 @@ xan$(TARGET_EXTENSION): $(PATHB)/xan$(TARGET_EXTENSION)
 	ln -sf $^ $@
 
 $(PATHB)/xan$(TARGET_EXTENSION): $(OBJS) | $(PATHB)
-	$(LINK) -o $@ $^ $(LDLIBS) $(LDFLAGS)
+	$(LINK) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 $(PATHB)/%.o: $(PATHS)/%.c | $(PATHB) $(PATHD)
 	$(COMPILE) -c $< -o $@
