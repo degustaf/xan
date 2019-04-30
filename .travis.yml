@@ -11,7 +11,8 @@ env:
 
 addons:
     apt:
-        - gcc-multilib
+        packages:
+            - gcc-multilib
 
 sudo: required
 dist: trusty
