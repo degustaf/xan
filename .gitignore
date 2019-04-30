@@ -1,3 +1,5 @@
+build/
+
 # Prerequisites
 *.d
 
@@ -35,6 +37,7 @@
 *.i*86
 *.x86_64
 *.hex
+xan
 
 # Debug files
 *.dSYM/
