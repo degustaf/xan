@@ -49,13 +49,19 @@ all: CFLAGS += -DDEBUG -DTEST -g
 all: xan$(TARGET_EXTENSION)
 
 
+$(PATHB):
+	$(MKDIR) $@
+
+$(PATHD):
+	$(MKDIR) $@
+
 xan$(TARGET_EXTENSION): $(PATHB)/xan$(TARGET_EXTENSION)
 	ln -sf $^ $@
 
-$(PATHB)/xan$(TARGET_EXTENSION): $(OBJS)
+$(PATHB)/xan$(TARGET_EXTENSION): $(OBJS) | $(PATHB)
 	$(LINK) -o $@ $^ $(LDLIBS) $(LDFLAGS)
 
-$(PATHB)/%.o: $(PATHS)/%.c
+$(PATHB)/%.o: $(PATHS)/%.c | $(PATHB) $(PATHD)
 	$(COMPILE) -c $< -o $@
 	$(POSTCOMPILE)
 

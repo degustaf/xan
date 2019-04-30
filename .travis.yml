@@ -9,4 +9,8 @@ env:
     - ARCH="-m64"
     - ARCH="-m32"
 
+addons:
+    apt:
+        - gcc-multilib
+
 script: make ARCH=${ARCH} test
