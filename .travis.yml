@@ -13,4 +13,7 @@ addons:
     apt:
         - gcc-multilib
 
+sudo: required
+dist: trusty
+
 script: make ARCH=${ARCH} test
