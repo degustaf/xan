@@ -7,15 +7,18 @@
 #if defined(__x86_64__)
 	#define X64_ARCH
 	#define ENDIAN	XAN_LITTLE_ENDIAN
+#elif defined(__i386__)
+	#define X86_ARCH
+	#define ENDIAN	XAN_LITTLE_ENDIAN
 #else
 	#error "Unsupported Architecture."
 #endif
 
-#if defined(__linux__)
-	#define OS_LINUX
-#else
-	#error "Unsupported OS."
-#endif
+// #if defined(__linux__)
+// 	#define OS_LINUX
+// #else
+// 	#error "Unsupported OS."
+// #endif
 
 #if ENDIAN == XAN_BIG_ENDIAN
 	#define ENDIAN_SELECT(le, be)	be

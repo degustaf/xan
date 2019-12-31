@@ -128,7 +128,7 @@ static uint16_t makeConstant(Parser *p, Value v);
 #define codePtr(chunk, e) (&((chunk)->code[(e)->u.s.info]))
 
 static void exprToRegNoBranch(Parser *p, expressionDescription *e, Reg r) {
-	uint32_t instruction;
+	uint32_t instruction = 0;
 	Reg assignable = false;
 	exprDischarge(p, e);
 	switch(e->type) {
@@ -145,7 +145,16 @@ static void exprToRegNoBranch(Parser *p, expressionDescription *e, Reg r) {
 			setbc_a(codePtr(currentChunk(p), e), r);
 			goto NO_INSTRUCTION;
 		case NONRELOC_TYPE:
+			if(e->u.r.r == r)
+				goto NO_INSTRUCTION;
+			assert(false);
+			assignable = e->u.r.assignable;
+			break;
 		case GLOBAL_TYPE:
+			if(e->u.r.r == r)
+				goto NO_INSTRUCTION;
+			assert(false);
+			// instruction = OP_AD(OP_
 			assignable = e->u.r.assignable;
 			break;
 		// default:
