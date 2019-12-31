@@ -22,10 +22,23 @@ static void primitiveInstruction(uint32_t bytecode) {
 	printf("' to register %d\n", reg);
 }
 
+static void InstructionA(const char *name, uint32_t bytecode) {
+	uint8_t reg = RA(bytecode);
+	printf("%-16s register %d\n", name, reg);
+}
+
 static void InstructionAD(const char *name, uint32_t bytecode) {
 	uint8_t reg = RA(bytecode);
 	uint16_t constant = RD(bytecode);
 	printf("%-16s register %4d to register %d\n", name, constant, reg);
+}
+
+static void InstructionADstr(const char *name, Chunk *chunk, uint32_t bytecode) {
+	uint8_t reg = RA(bytecode);
+	uint16_t constant = RD(bytecode);
+	printf("%-16s variable %4d '", name, constant);
+	printValue(chunk->constants.values[constant]);
+	printf("' to register %d\n", reg);
 }
 
 static void InstructionABC(const char *name, uint32_t bytecode) {
@@ -36,14 +49,15 @@ static void InstructionABC(const char *name, uint32_t bytecode) {
 }
 
 void disassembleInstruction(Chunk* chunk, size_t offset) {
-	printf("%04zu ", offset);
+	uint32_t bytecode = chunk->code[offset];
+	printf("%04zu %08x ", offset, bytecode);
+
 	if(offset > 0 && chunk->lines[offset] == chunk->lines[offset - 1]) {
 		printf("   | ");
 	} else {
 		printf("%4zu ", chunk->lines[offset]);
 	}
 
-	uint32_t bytecode = chunk->code[offset];
 	switch(OP(bytecode)) {
 		case OP_CONST_NUM:
 			constantInstruction("OP_CONST_NUM", chunk, bytecode);
@@ -58,13 +72,13 @@ void disassembleInstruction(Chunk* chunk, size_t offset) {
 			InstructionAD("OP_NOT", bytecode);
 			break;
 		case OP_SET_GLOBAL:
-			InstructionAD("OP_SET_GLOBAL", bytecode);
+			InstructionADstr("OP_SET_GLOBAL", chunk, bytecode);
 			break;
 		case OP_GET_GLOBAL:
-			InstructionAD("OP_GET_GLOBAL", bytecode);
+			InstructionADstr("OP_GET_GLOBAL", chunk, bytecode);
 			break;
 		case OP_DEFINE_GLOBAL:
-			InstructionAD("OP_DEFINE_GLOBAL", bytecode);
+			InstructionADstr("OP_DEFINE_GLOBAL", chunk, bytecode);
 			break;
 		case OP_EQUAL:
 			InstructionABC("OP_EQUAL", bytecode);
@@ -97,7 +111,7 @@ void disassembleInstruction(Chunk* chunk, size_t offset) {
 			InstructionABC("OP_DIVVV", bytecode);
 			break;
 		case OP_PRINT:
-			simpleInstruction("OP_PRINT");
+			InstructionA("OP_PRINT", bytecode);
 			return;
 		case OP_RETURN:
 			simpleInstruction("OP_RETURN");
@@ -110,6 +124,14 @@ void disassembleInstruction(Chunk* chunk, size_t offset) {
 
 void disassembleChunk(Chunk* chunk, const char *name) {
 	printf("== %s ==\n", name);
+
+	printf(" = Constants\n");
+	for(size_t i = 0; i < chunk->constants.count; i++) {
+		printf("%03zu\t", i);
+		printValue(chunk->constants.values[i]);
+		printf("\n");
+	}
+	printf("\n");
 
 	for(size_t offset = 0; offset < chunk->count; offset++) {
 		disassembleInstruction(chunk, offset);

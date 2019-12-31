@@ -17,17 +17,19 @@ void freeChunk(Chunk *chunk) {
 	initChunk(chunk);
 }
 
-void writeChunk(Chunk *chunk, uint32_t opcode, size_t line) {
-	if(chunk->capacity < chunk->count + 1) {
+size_t writeChunk(Chunk *chunk, uint32_t opcode, size_t line) {
+	size_t count = chunk->count;
+	if(chunk->capacity < count + 1) {
 		size_t oldCapacity = chunk->capacity;
 		chunk->capacity = GROW_CAPACITY(oldCapacity);
 		chunk->code = GROW_ARRAY(chunk->code, uint32_t, oldCapacity, chunk->capacity);
 		chunk->lines = GROW_ARRAY(chunk->lines, size_t, oldCapacity, chunk->capacity);
 	}
 
-	chunk->code[chunk->count] = opcode;
-	chunk->lines[chunk->count] = line;
-	chunk->count++;
+	chunk->code[count] = opcode;
+	chunk->lines[count] = line;
+	chunk->count = count + 1;
+	return count;
 }
 
 size_t addConstant(Chunk *chunk, Value value) {

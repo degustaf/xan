@@ -1,8 +1,12 @@
 #ifndef XAN_COMMON_H
 #define XAN_COMMON_H
 
-#undef  DEBUG_PARSER
-#undef  DEBUG_PRINT_CODE
-#undef  DEBUG_TRACE_EXECUTION
+#include "arch.h"
+
+#undef DEBUG_PARSER
+#undef DEBUG_PRINT_CODE
+#undef DEBUG_TRACE_EXECUTION
+
+#define XAN_STATIC_ASSERT(x) extern void assert_##__LINE__(int STATIC_ASSERTION_FAILED[(x)?1:-1])
 
 #endif /* XAN_COMMON_H */

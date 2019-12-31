@@ -24,7 +24,10 @@ endif
 PATHS = 		src
 PATHB = 		build
 PATHD =			depend
+PATHU =			unittest
+PATHUB =		unittestBuild
 SRCS =			$(wildcard $(PATHS)/*.c)
+USRCS =			$(wildcard $(PATHU)/*.c)
 LINK = 			$(CC)
 C_STD =			c99
 CFLAGS =		-I$(PATHS) -Wall -Wextra -pedantic $(ARCH) -std=$(C_STD) -D_POSIX_C_SOURCE=200809L
@@ -35,8 +38,9 @@ LDLIBS =
 COMPILE =		$(CC) $(CFLAGS) -MT $@ -MP -MMD -MF $(PATHD)/$*.Td
 OBJS =			$(addprefix $(PATHB)/, $(notdir $(SRCS:.c=.o)))
 POSTCOMPILE =	@mv -f $(PATHD)/$*.Td $(PATHD)/$*.d && touch $@
+UBINS =			$(addprefix $(PATHUB)/, $(notdir $(USRCS:.c=$(TARGET_EXTENSION))))
 
-.PHONY: all clean test
+.PHONY: all clean test unittest
 
 .PRECIOUS: $(PATHD)/%.d
 .PRECIOUS: $(PATHB)/%.o
@@ -46,13 +50,16 @@ POSTCOMPILE =	@mv -f $(PATHD)/$*.Td $(PATHD)/$*.d && touch $@
 
 # all: CFLAGS += -DDEBUG -DTEST -g -fprofile-arcs
 all: CFLAGS += -DDEBUG -DTEST -g
-all: xan$(TARGET_EXTENSION)
+all: unittest xan$(TARGET_EXTENSION)
 
 
 $(PATHB):
 	$(MKDIR) $@
 
 $(PATHD):
+	$(MKDIR) $@
+
+$(PATHUB):
 	$(MKDIR) $@
 
 xan$(TARGET_EXTENSION): $(PATHB)/xan$(TARGET_EXTENSION)
@@ -65,8 +72,18 @@ $(PATHB)/%.o: $(PATHS)/%.c | $(PATHB) $(PATHD)
 	$(COMPILE) -c $< -o $@
 	$(POSTCOMPILE)
 
+$(PATHUB)/%.o: $(PATHU)/%.c | $(PATHUB) $(PATHD)
+	$(COMPILE) -c $< -o $@
+	$(POSTCOMPILE)
+
+$(PATHUB)/%$(TARGET_EXTENSION): $(PATHUB)/%.o | $(PATHB)
+	$(LINK) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+	$@
+
 test: xan$(TARGET_EXTENSION)
 	python3 util/test.py $<
+
+unittest: $(UBINS)
 
 clean:
 	$(CLEANUP) $(PATHS)/*.d
