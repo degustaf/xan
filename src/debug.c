@@ -127,9 +127,9 @@ void disassembleChunk(Chunk* chunk, const char *name) {
 
 	printf(" = Constants\n");
 	for(size_t i = 0; i < chunk->constants.count; i++) {
-		printf("%03zu\t", i);
+		printf("%03zu\t'", i);
 		printValue(chunk->constants.values[i]);
-		printf("\n");
+		printf("'\n");
 	}
 	printf("\n");
 

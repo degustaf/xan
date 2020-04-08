@@ -5,6 +5,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdio.h>
 
 typedef struct sObj Obj;
 typedef struct sObjString ObjString;
@@ -49,6 +50,7 @@ bool valuesEqual(Value, Value);
 void initValueArray(ValueArray *array);
 void writeValueArray(ValueArray *array, Value value);
 void freeValueArray(ValueArray *array);
+void fprintValue(FILE *restrict stream, Value value);
 void printValue(Value value);
 
 #endif /* XAN_VALUE_H */

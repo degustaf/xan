@@ -55,7 +55,8 @@ static inline Value getPrimitive(primitive p) {
 	}
 }
 
-typedef uint8_t Reg;		// A register, i.e. a stack offset.
+typedef uint8_t Reg;			// a register, i.e. a stack offset.
+typedef uint32_t BC_position;	// an index into a bytecode array.
 
 // These macros are designed to put data into the uint32_t bytecodes.
 #define OP_A(op,a) (((uint32_t) (op)) | (((uint32_t) (a)) << 8))
@@ -76,6 +77,8 @@ typedef uint8_t Reg;		// A register, i.e. a stack offset.
 #define setbc_a(p, x)	setbc(p, (x), 1)
 #define setbc_b(p, x)	setbc(p, (x), 2)
 #define setbc_c(p, x)	setbc(p, (x), 3)
+
+#define NO_JUMP (~(BC_position)0)
 
 typedef struct {
 	size_t count;

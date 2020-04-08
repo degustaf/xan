@@ -32,6 +32,7 @@ typedef struct sVM VM;
 
 ObjString *takeString(char *chars, size_t length, VM *vm);
 ObjString *copyString(const char *chars, size_t length, VM *vm);
+void fprintObject(FILE *restrict stream, Value value);
 void printObject(Value value);
 
 static inline bool isObjType(Value v, ObjType t) {

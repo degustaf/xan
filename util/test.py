@@ -49,11 +49,11 @@ def c_interpreter(name, tests):
 
 c_interpreter('xan', {
    'test': 'pass',
- 
+
    # These are just for earlier chapters.
    'test/scanning': 'skip',
    'test/expressions': 'skip',
- 
+
    # No control flow.
    'test/block/empty.xan': 'skip',
    'test/for': 'skip',
@@ -62,22 +62,7 @@ c_interpreter('xan', {
    'test/logical_operator': 'skip',
    'test/variable/unreached_undefined.xan': 'skip',
    'test/while': 'skip',
- 
-   # No blocks.
-   'test/assignment/local.xan': 'skip',
-   'test/variable/in_middle_of_block.xan': 'skip',
-   'test/variable/in_nested_block.xan': 'skip',
-   'test/variable/scope_reuse_in_different_blocks.xan': 'skip',
-   'test/variable/shadow_and_local.xan': 'skip',
-   'test/variable/undefined_local.xan': 'skip',
- 
-   # No local variables.
-   'test/block/scope.xan': 'skip',
-   'test/variable/duplicate_local.xan': 'skip',
-   'test/variable/shadow_global.xan': 'skip',
-   'test/variable/shadow_local.xan': 'skip',
-   'test/variable/use_local_in_initializer.xan': 'skip',
- 
+
    # No functions.
    'test/call': 'skip',
    'test/closure': 'skip',
@@ -93,7 +78,7 @@ c_interpreter('xan', {
    'test/variable/collide_with_parameter.xan': 'skip',
    'test/variable/duplicate_parameter.xan': 'skip',
    'test/variable/early_bound.xan': 'skip',
- 
+
    # No classes.
    'test/assignment/to_this.xan': 'skip',
    'test/class': 'skip',

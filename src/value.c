@@ -1,7 +1,5 @@
 #include "value.h"
 
-#include <stdio.h>
-
 #include "memory.h"
 #include "object.h"
 
@@ -39,19 +37,23 @@ void freeValueArray(ValueArray *array) {
 	initValueArray(array);
 }
 
-void printValue(Value value) {
+void fprintValue(FILE *restrict stream, Value value) {
 	switch(value.type) {
 		case VAL_BOOL:
-			printf(AS_BOOL(value) ? "true" : "false");
+			fprintf(stream, AS_BOOL(value) ? "true" : "false");
 			break;
 		case VAL_NIL:
-			printf("nil");
+			fprintf(stream, "nil");
 			break;
 		case VAL_NUMBER:
-			printf("%g", AS_NUMBER(value));
+			fprintf(stream, "%g", AS_NUMBER(value));
 			break;
 		case VAL_OBJ:
-			printObject(value);
+			fprintObject(stream, value);
 			break;
 	}
+}
+
+void printValue(Value value) {
+	fprintValue(stdout, value);
 }

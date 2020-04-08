@@ -59,10 +59,14 @@ ObjString* copyString(const char *chars, size_t length, VM *vm) {
 	return allocateString(heapChars, length, hash, vm);
 }
 
-void printObject(Value value) {
+void fprintObject(FILE *restrict stream, Value value) {
 	switch(OBJ_TYPE(value)) {
 		case OBJ_STRING:
-			printf("%s", AS_CSTRING(value));
+			fprintf(stream, "%s", AS_CSTRING(value));
 			break;
 	}
+}
+
+void printObject(Value value) {
+	fprintObject(stdout, value);
 }
