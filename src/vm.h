@@ -5,14 +5,20 @@
 
 #include <stddef.h>
 
-// #define BASE_STACK_SIZE 40
+#define FRAMES_MAX 64
 #define BASE_STACK_SIZE 100
 
 #include "table.h"
 
-struct sVM {
-	Chunk *chunk;
+typedef struct {
+	ObjFunction *f;
 	uint32_t *ip;
+	Value *slots;
+} CallFrame;
+
+struct sVM {
+	CallFrame frames[FRAMES_MAX];
+	int frameCount;
 	Value *stack;
 	Value *stackTop;
 	Value *stackLast;

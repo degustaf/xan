@@ -6,3 +6,6 @@ print a; // expect: after
 
 print a = "arg"; // expect: arg
 print a; // expect: arg
+
+var b = a;
+print b; // expect: arg

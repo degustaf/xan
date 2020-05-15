@@ -4,7 +4,7 @@
 #include <stddef.h>
 
 #define TOKEN_BUILDER(X) \
-	X(TOKEN_LEFT_PAREN, grouping, NULL,    PREC_CALL ),\
+	X(TOKEN_LEFT_PAREN, grouping, call,    PREC_CALL ),\
 	X(TOKEN_RIGHT_PAREN, NULL,     NULL,    PREC_NONE ),\
 	X(TOKEN_LEFT_BRACE, NULL,     NULL,    PREC_NONE ),\
 	X(TOKEN_RIGHT_BRACE, NULL,     NULL,    PREC_NONE ),\
@@ -26,7 +26,7 @@
 	X(TOKEN_IDENTIFIER, variable, NULL,    PREC_NONE ),\
 	X(TOKEN_STRING, string,   NULL,    PREC_NONE ),\
 	X(TOKEN_NUMBER, number,   NULL,    PREC_NONE ),\
-	X(TOKEN_AND, NULL,     NULL,    PREC_AND ),\
+	X(TOKEN_AND, NULL,     binary,    PREC_AND ),\
 	X(TOKEN_CLASS, NULL,     NULL,    PREC_NONE ),\
 	X(TOKEN_ELSE, NULL,     NULL,    PREC_NONE ),\
 	X(TOKEN_FALSE, literal,  NULL,    PREC_NONE ),\
@@ -34,7 +34,7 @@
 	X(TOKEN_FUN, NULL,     NULL,    PREC_NONE ),\
 	X(TOKEN_IF, NULL,     NULL,    PREC_NONE ),\
 	X(TOKEN_NIL, literal,  NULL,    PREC_NONE ),\
-	X(TOKEN_OR, NULL,     NULL,    PREC_OR ),\
+	X(TOKEN_OR, NULL,     binary,    PREC_OR ),\
 	X(TOKEN_PRINT, NULL,     NULL,    PREC_NONE ),\
 	X(TOKEN_RETURN, NULL,     NULL,    PREC_NONE ),\
 	X(TOKEN_SUPER, NULL,     NULL,    PREC_NONE ),\

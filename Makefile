@@ -44,6 +44,7 @@ UBINS =			$(addprefix $(PATHUB)/, $(notdir $(USRCS:.c=$(TARGET_EXTENSION))))
 
 .PRECIOUS: $(PATHD)/%.d
 .PRECIOUS: $(PATHB)/%.o
+.PRECIOUS: $(PATHUB)/%
 
 
 # Rules

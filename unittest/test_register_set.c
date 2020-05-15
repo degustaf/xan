@@ -45,9 +45,36 @@ void test_register_c(void) {
 	}
 }
 
+void test_register_d(void) {
+	for(uint16_t i = 0; i < UINT16_MAX; i++) {
+		uint32_t data = 0;
+		setbc_d(&data, i);
+		uint16_t d = RD(data);
+		if(d != i) {
+			fprintf(stderr, "d = %u\ni = %u\n", d, i);
+		}
+		assert(d == i);
+	}
+}
+
+/*
+void test_register_j(void) {
+	for(uint16_t i = 0; i < UINT16_MAX; i++) {
+		uint32_t data = 0;
+		setbc_d(&data, i);
+		uint16_t d = RD(data);
+		if(d != i) {
+			fprintf(stderr, "d = %u\ni = %u\n", d, i);
+		}
+		assert(d == i);
+	}
+}
+*/
+
 int main( __attribute__((unused)) int argc, __attribute__((unused)) char** argv) {
 	test_register_op();
 	test_register_a();
 	test_register_b();
 	test_register_c();
+	test_register_d();
 }

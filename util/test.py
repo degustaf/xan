@@ -54,33 +54,27 @@ c_interpreter('xan', {
    'test/scanning': 'skip',
    'test/expressions': 'skip',
 
-   # No control flow.
-   'test/block/empty.xan': 'skip',
-   'test/for': 'skip',
-   'test/if': 'skip',
-   'test/limit/loop_too_large.xan': 'skip',
-   'test/logical_operator': 'skip',
-   'test/variable/unreached_undefined.xan': 'skip',
-   'test/while': 'skip',
-
-   # No functions.
-   'test/call': 'skip',
-   'test/closure': 'skip',
-   'test/function': 'skip',
+   # Limits are no longer in place.
+   'test/limit/loop_too_large.xan': 'skip',     # Loop limit has increased
    'test/limit/no_reuse_constants.xan': 'skip',
-   'test/limit/stack_overflow.xan': 'skip',
    'test/limit/too_many_constants.xan': 'skip',
    'test/limit/too_many_locals.xan': 'skip',
+   'test/function/too_many_arguments.xan': 'skip',
+   'test/function/too_many_parameters.xan': 'skip',
+
+   # No closures.
+   'test/closure': 'skip',
+   'test/for/closure_in_body.xan': 'skip',
+   'test/for/return_closure.xan': 'skip',
+   'test/function/local_recursion.xan': 'skip',
    'test/limit/too_many_upvalues.xan': 'skip',
    'test/regression/40.xan': 'skip',
-   'test/return': 'skip',
-   'test/unexpected_character.xan': 'skip',
-   'test/variable/collide_with_parameter.xan': 'skip',
-   'test/variable/duplicate_parameter.xan': 'skip',
-   'test/variable/early_bound.xan': 'skip',
+   'test/while/closure_in_body.xan': 'skip',
+   'test/while/return_closure.xan': 'skip',
 
    # No classes.
    'test/assignment/to_this.xan': 'skip',
+   'test/call/object.xan': 'skip',
    'test/class': 'skip',
    'test/constructor': 'skip',
    'test/field': 'skip',
@@ -92,6 +86,7 @@ c_interpreter('xan', {
    'test/operator/equals_method.xan': 'skip',
    'test/operator/not.xan': 'skip',
    'test/operator/not_class.xan': 'skip',
+   'test/return/in_method.xan': 'skip',
    'test/super': 'skip',
    'test/this': 'skip',
    'test/variable/local_from_method.xan': 'skip',
@@ -296,7 +291,7 @@ c_interpreter('xan', {
 #   # These are just for earlier chapters.
 #   'test/scanning': 'skip',
 #   'test/expressions': 'skip',
-# 
+
 #   # No closures.
 #   'test/closure': 'skip',
 #   'test/for/closure_in_body.xan': 'skip',
@@ -306,7 +301,7 @@ c_interpreter('xan', {
 #   'test/regression/40.xan': 'skip',
 #   'test/while/closure_in_body.xan': 'skip',
 #   'test/while/return_closure.xan': 'skip',
-# 
+
 #   # No classes.
 #   'test/assignment/to_this.xan': 'skip',
 #   'test/call/object.xan': 'skip',

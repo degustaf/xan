@@ -10,7 +10,10 @@ static void constantInstruction(const char *name, Chunk *chunk, uint32_t bytecod
 	uint8_t reg = RA(bytecode);
 	uint16_t constant = RD(bytecode);
 	printf("%-16s %4d '", name, constant);
-	printValue(chunk->constants.values[constant]);
+	if(constant < chunk->count)
+		printValue(chunk->constants.values[constant]);
+	else
+		printf("Out of Range");
 	printf("' to register %d\n", reg);
 }
 
@@ -37,7 +40,10 @@ static void InstructionADstr(const char *name, Chunk *chunk, uint32_t bytecode) 
 	uint8_t reg = RA(bytecode);
 	uint16_t constant = RD(bytecode);
 	printf("%-16s variable %4d '", name, constant);
-	printValue(chunk->constants.values[constant]);
+	if(constant < chunk->count)
+		printValue(chunk->constants.values[constant]);
+	else
+		printf("Out of Range");
 	printf("' to register %d\n", reg);
 }
 
@@ -46,6 +52,29 @@ static void InstructionABC(const char *name, uint32_t bytecode) {
 	uint8_t regB = RB(bytecode);
 	uint8_t regC = RC(bytecode);
 	printf("%-16s Reg %4d Reg %4d -> Reg %4d\n", name, regB, regC, regA);
+}
+
+static void InstructionD(const char *name, uint32_t bytecode) {
+	uint16_t constant = RD(bytecode);
+	printf("%-16s register %4d\n", name, constant);
+}
+
+static void InstructionJ(const char *name, uint32_t bytecode) {
+	int16_t constant = (int16_t)RD(bytecode) - JUMP_BIAS;
+	printf("%-16s register %4d\n", name, constant);
+}
+
+static void callInstruction(const char *name, uint32_t bytecode) {
+	uint8_t regA = RA(bytecode);
+	uint8_t regB = RB(bytecode);
+	uint8_t regC = RC(bytecode);
+	printf("%-16s call Reg %4d with arg count Reg %4d returning Reg %4d\n", name, regA, regB, regC);
+}
+
+static void returnInstruction(const char *name, uint32_t bytecode) {
+	uint8_t reg = RA(bytecode);
+	uint16_t count = RD(bytecode);
+	printf("%-16s return %4d - 1 registers starting at %d\n", name, count, reg);
 }
 
 void disassembleInstruction(Chunk* chunk, size_t offset) {
@@ -71,15 +100,18 @@ void disassembleInstruction(Chunk* chunk, size_t offset) {
 		case OP_NOT:
 			InstructionAD("OP_NOT", bytecode);
 			break;
+		case OP_DEFINE_GLOBAL:
+			InstructionADstr("OP_DEFINE_GLOBAL", chunk, bytecode);
+			break;
 		case OP_SET_GLOBAL:
 			InstructionADstr("OP_SET_GLOBAL", chunk, bytecode);
 			break;
 		case OP_GET_GLOBAL:
 			InstructionADstr("OP_GET_GLOBAL", chunk, bytecode);
 			break;
-		case OP_DEFINE_GLOBAL:
-			InstructionADstr("OP_DEFINE_GLOBAL", chunk, bytecode);
-			break;
+		case OP_RETURN:
+			returnInstruction("OP_RETURN", bytecode);
+			return;
 		case OP_EQUAL:
 			InstructionABC("OP_EQUAL", bytecode);
 			break;
@@ -89,14 +121,14 @@ void disassembleInstruction(Chunk* chunk, size_t offset) {
 		case OP_GREATER:
 			InstructionABC("OP_GREATER", bytecode);
 			break;
+		case OP_LEQ:
+			InstructionABC("OP_LEQ", bytecode);
+			break;
 		case OP_GEQ:
 			InstructionABC("OP_GEQ", bytecode);
 			break;
 		case OP_LESS:
 			InstructionABC("OP_LESS", bytecode);
-			break;
-		case OP_LEQ:
-			InstructionABC("OP_LEQ", bytecode);
 			break;
 		case OP_ADDVV:
 			InstructionABC("OP_ADDVV", bytecode);
@@ -113,8 +145,26 @@ void disassembleInstruction(Chunk* chunk, size_t offset) {
 		case OP_PRINT:
 			InstructionA("OP_PRINT", bytecode);
 			return;
-		case OP_RETURN:
-			simpleInstruction("OP_RETURN");
+		case OP_JUMP:
+			InstructionJ("OP_JUMP", bytecode);
+			return;
+		case OP_COPY_JUMP_IF_FALSE:
+			InstructionAD("OP_COPY_JUMP_IF_FALSE", bytecode);
+			return;
+		case OP_COPY_JUMP_IF_TRUE:
+			InstructionAD("OP_COPY_JUMP_IF_TRUE", bytecode);
+			return;
+		case OP_JUMP_IF_FALSE:
+			InstructionD("OP_JUMP_IF_FALSE", bytecode);
+			return;
+		case OP_JUMP_IF_TRUE:
+			InstructionD("OP_JUMP_IF_TRUE", bytecode);
+			return;
+		case OP_MOV:
+			InstructionAD("OP_MOV", bytecode);
+			return;
+		case OP_CALL:
+			callInstruction("OP_CALL", bytecode);
 			return;
 		default:
 			printf("Unknown opcode %d\n", OP(bytecode));
@@ -136,4 +186,23 @@ void disassembleChunk(Chunk* chunk, const char *name) {
 	for(size_t offset = 0; offset < chunk->count; offset++) {
 		disassembleInstruction(chunk, offset);
 	}
+}
+
+static void dumpValueArray(Value *valueArray, Value *ArrayTop, size_t count) {
+	printf("{");
+	size_t top = ArrayTop - valueArray;
+	if(count < top) top = count;
+	printValue(valueArray[0]);
+	for(size_t i = 1; i < top; i++) {
+		printf(", ");
+		printValue(valueArray[i]);
+	}
+	printf("}\n");
+}
+
+void dumpStack(VM *vm, size_t count) {
+	printf("stack = ");
+	dumpValueArray(vm->stack, vm->stackLast, count);
+	printf("frame = ");
+	dumpValueArray(vm->frames[vm->frameCount - 1].slots, vm->stackLast, count);
 }

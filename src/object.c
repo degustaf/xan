@@ -16,6 +16,30 @@ static Obj* allocateObject(size_t size, ObjType type, VM *vm) {
 	return object;
 }
 
+ObjFunction *newFunction(VM *vm) {
+	ObjFunction *f = ALLOCATE_OBJ(ObjFunction, OBJ_FUNCTION);
+
+	f->arity = 0;
+	f->stackUsed = 0;
+	f->name = NULL;
+	initChunk(&f->chunk);
+	return f;
+}
+
+ObjNative *newNative(VM *vm, NativeFn function) {
+	ObjNative *native = ALLOCATE_OBJ(ObjNative, OBJ_NATIVE);
+	native->function = function;
+	return native;
+}
+
+static void fprintFunction(FILE *restrict stream, ObjFunction *f) {
+	if(f->name == NULL) {
+		fprintf(stream, "<script>");
+	} else {
+		fprintf(stream, "<fn %s>", f->name->chars);
+	}
+}
+
 static ObjString* allocateString(char *chars, size_t length, uint32_t hash, VM *vm) {
 	ObjString *string = ALLOCATE_OBJ(ObjString, OBJ_STRING);
 	string->length = length;
@@ -61,6 +85,12 @@ ObjString* copyString(const char *chars, size_t length, VM *vm) {
 
 void fprintObject(FILE *restrict stream, Value value) {
 	switch(OBJ_TYPE(value)) {
+		case OBJ_FUNCTION:
+			fprintFunction(stream, AS_FUNCTION(value));
+			break;
+		case OBJ_NATIVE:
+			fprintf(stream, "<native fn>");
+			break;
 		case OBJ_STRING:
 			fprintf(stream, "%s", AS_CSTRING(value));
 			break;
