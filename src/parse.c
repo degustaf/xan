@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "memory.h"
 #include "scanner.h"
 #ifdef DEBUG_PRINT_CODE
 #include "debug.h"
@@ -14,6 +15,7 @@
 typedef struct {
 	Token name;
 	int depth;
+	bool isCaptured;
 } Local;
 
 typedef enum {
@@ -26,6 +28,7 @@ typedef struct Compiler {
 	ObjFunction *function;
 	FunctionType type;
 	Local locals[UINT8_COUNT];
+	uint16_t upvalues[UINT8_COUNT];
 	size_t localCount;
 	int scopeDepth;
 	OP_position pendingJumpList;
@@ -75,6 +78,7 @@ typedef enum {
 	RELOC_EXTYPE,
 	NONRELOC_EXTYPE,	// u.r.r is result register.
 	GLOBAL_EXTYPE,
+	UPVAL_EXTYPE,		// u.s.info is ????
 	LOCAL_EXTYPE,		// u.r.r is stack register.
 	JUMP_EXTYPE,		// u.s.info is instruction number.
 	CALL_EXTYPE,		// u.s.info is instruction number.
@@ -269,7 +273,7 @@ static void jump_patch_value(Parser *p, OP_position jump_list, OP_position value
 	}
 }
 
-static size_t emitBytecode(Parser *p, uint32_t bc) {	// TODO compiler?
+static size_t emitBytecode(Parser *p, uint32_t bc) {
 	PRINT_FUNCTION;
 	Compiler *compiler = p->currentCompiler;
 #ifdef DEBUG_PARSER
@@ -338,6 +342,10 @@ static void exprFree(Compiler *c, expressionDescription *e) {
 static void exprDischarge(Parser *p, expressionDescription *e) {
 	PRINT_FUNCTION;
 	switch(e->type) {
+		case UPVAL_EXTYPE:
+			e->u.s.info = emit_AD(p, OP_GET_UPVAL, 0, e->u.s.info);
+			e->type = RELOC_EXTYPE;
+			return;
 		case GLOBAL_EXTYPE:
 #ifdef DEBUG_EXPRESSION_DESCRIPTION
 			assert(e->u.r.r == 0);
@@ -461,7 +469,7 @@ static bool jump_novalue(Chunk *c, OP_position list) {
 	return false;
 }
 
-static size_t emit_jump(Parser *p) {	// TODO compiler?
+static size_t emit_jump(Parser *p) {
 	PRINT_FUNCTION;
 	Compiler *c = p->currentCompiler;
 	// TODO handle closing upvalues.
@@ -474,7 +482,7 @@ static size_t emit_jump(Parser *p) {	// TODO compiler?
 	return j;
 }
 
-static void jump_to_here(Parser *p, OP_position list) { // TODO compiler?
+static void jump_to_here(Parser *p, OP_position list) {
 	PRINT_FUNCTION;
 	Compiler *c = p->currentCompiler;
 	c->last_target = currentChunk(c)->count;
@@ -496,8 +504,8 @@ XAN_STATIC_ASSERT(((int)OP_EQUAL^1) == (int)OP_NEQ);
 XAN_STATIC_ASSERT(((int)OP_GREATER^1) == (int)OP_LEQ);
 XAN_STATIC_ASSERT(((int)OP_LESS^1) == (int)OP_GEQ);
 
-static void invertCond(Parser *p, expressionDescription *e) {	// TODO compiler?
-	uint32_t *ip = &currentChunk(p->currentCompiler)->code[e->u.s.info - 1];
+static void invertCond(Compiler *c, expressionDescription *e) {
+	uint32_t *ip = &currentChunk(c)->code[e->u.s.info - 1];
 	setbc_op(ip, OP(*ip)^1);
 }
 
@@ -524,7 +532,7 @@ static void emit_branch_true(Parser *p, expressionDescription *e) {
 	// TODO handle constant expressions.
 	OP_position pc;
 	if(e->type == JUMP_EXTYPE) {
-		invertCond(p, e);
+		invertCond(p->currentCompiler, e);
 		pc = e->u.s.info;
 	} else {
 		pc = emit_branch(p, e, false);
@@ -702,6 +710,9 @@ static void emit_store(Parser *p, expressionDescription *variable, expressionDes
 		exprFree(p->currentCompiler, e);
 		exprToReg(p, e, variable->u.r.r);
 		return;
+	} else if(variable->type == UPVAL_EXTYPE) {
+		expr_toval(p, e);
+		emit_AD(p, OP_SET_UPVAL, variable->u.s.info, exprAnyReg(p, e));
 	// TODO Upvalue
 	} else if(variable->type == GLOBAL_EXTYPE) {
 		Reg r = exprAnyReg(p, e);
@@ -791,6 +802,7 @@ static Compiler* initCompiler(Parser *p, Compiler *compiler, FunctionType type) 
 #endif /* DEBUG_PARSER */
 	Local *local = &compiler->locals[compiler->localCount++];
 	local->depth = 0;
+	local->isCaptured = false;
 	local->name.start = "";
 	local->name.length = 0;
 	return compiler;
@@ -805,6 +817,9 @@ static ObjFunction *endCompiler(Parser *p) {
 	}
 	ObjFunction *f = p->currentCompiler->function;
 	f->stackUsed = p->currentCompiler->maxReg;
+	f->uv = ALLOCATE(uint16_t, f->uvCount);
+	for(size_t i=0; i<f->uvCount; i++)
+		f->uv[i] = p->currentCompiler->upvalues[i];
 #ifdef DEBUG_PRINT_CODE
 	if(!p->hadError) {
 		disassembleChunk(currentChunk(p->currentCompiler), f->name == NULL ? "<scripts>" : f->name->chars);
@@ -823,25 +838,14 @@ static uint16_t makeConstant(Parser *p, Value v) {
 	return (uint16_t)constant;
 }
 
-static void identifierConstant(Parser *p, expressionDescription *e, Token *name, int r) {
-	PRINT_FUNCTION;
-	if(r < 0)
-		exprInit(e, GLOBAL_EXTYPE,
-				makeConstant(p, OBJ_VAL(copyString(name->start, name->length, p->vm))));
-	else {
-		exprInit(e, LOCAL_EXTYPE, r);
-		e->assignable = true;
-	}
-}
-
 static bool identifiersEqual(Token *a, Token *b) {
 	return a->length == b->length && memcmp(a->start, b->start, a->length) == 0;
 }
 
-static int resolveLocal(Parser *p) {
-	for(size_t i = p->currentCompiler->localCount; i>0; i--) {
-		Local *local = &p->currentCompiler->locals[i-1];
-		if(identifiersEqual(&p->previous, &local->name)) {
+static int resolveLocal(Parser *p, Compiler *c, Token *name) {
+	for(int i = c->localCount; i>0; i--) {
+		Local *local = &c->locals[i-1];
+		if(identifiersEqual(name, &local->name)) {
 			if(local->depth == -1)
 				errorAtPrevious(p, "Cannot read local variable in its own initializer.");
 			return i-2;
@@ -854,12 +858,13 @@ static int addLocal(Parser *p, Token name) {
 	PRINT_FUNCTION;
 	Compiler *c = p->currentCompiler;
 	if(c->localCount == UINT8_COUNT) {
-		errorAtPrevious(p, "");
+		errorAtPrevious(p, "Too many local variables in function.");
 	}
 	c->actVar++;
 	Local *local = &c->locals[c->localCount++];
 	local->name = name;
 	local->depth = -1;
+	local->isCaptured = false;
 	return c->localCount-2;
 }
 
@@ -914,7 +919,7 @@ static void assign_adjust(Parser *p, /* uint8_t nVars, uint8_t nExps,*/ expressi
 static void assign(Parser *p, expressionDescription *e) {
 	PRINT_FUNCTION;
 	printExpr(stderr, e);
-	if((e->type != NONRELOC_EXTYPE && e->type != GLOBAL_EXTYPE && e->type != LOCAL_EXTYPE) || !e->assignable) {
+	if((e->type != NONRELOC_EXTYPE && e->type != GLOBAL_EXTYPE && e->type != LOCAL_EXTYPE && e->type != UPVAL_EXTYPE) || !e->assignable) {
 		errorAtPrevious(p, "Invalid assignment target.");
 		return;
 	}
@@ -1013,7 +1018,7 @@ static Reg argumentList(Parser *p, expressionDescription *e) {
 	Reg base = e->u.r.r;
 	if(args.type != VOID_EXTYPE)
 		exprNextReg(p, &args);
-	uint32_t ins = OP_ABC(OP_CALL, base, nargs, 1);
+	uint32_t ins = OP_ABC(OP_CALL, base, 1, nargs);
 	exprInit(e, CALL_EXTYPE, emitBytecode(p, ins));
 	e->u.s.aux = base;
 	p->currentCompiler->nextReg = base+1;
@@ -1068,18 +1073,54 @@ static void unary(Parser *p, expressionDescription *e) {
 	exprInit(e, RELOC_EXTYPE, emit_AD(p, op, 0, e->u.r.r));
 }
 
+static void uv_mark(Compiler *c, int arg) {
+	c->locals[arg].isCaptured = true;
+}
+
+static size_t var_lookup_uv(Parser *p, Compiler *c, int arg, expressionDescription *e, bool isLocal) {
+	size_t uv_count = c->function->uvCount;
+	uint16_t larg = isLocal ? UV_IS_LOCAL | arg : arg;
+	for(size_t i=0; i<uv_count; i++) {
+		uint16_t *uv = c->upvalues + i;
+		if(*uv == larg)
+			return i;
+	}
+	if(uv_count == UINT8_COUNT) {
+		errorAtPrevious(p, "Too many closure variables in function.");
+		exit(EXIT_COMPILE_ERROR);
+	}
+	c->upvalues[uv_count] = larg;
+	return c->function->uvCount++;
+}
+
+static int var_lookup(Parser *p, Compiler *c, Token *name, expressionDescription *e, bool local) {
+	if(c) {
+		int arg = resolveLocal(p, c, name);
+		if(arg >= 0) {
+			exprInit(e, LOCAL_EXTYPE, arg);
+			e->assignable = true;
+			if(!local)
+				uv_mark(c, arg+1);
+			return arg;		// TODO vstack?
+		} else {
+			arg = var_lookup(p, c->enclosing, name, e, false);
+			if(arg >= 0) {
+				e->u.s.info = var_lookup_uv(p, c, arg, e, e->type == LOCAL_EXTYPE);
+				e->type = UPVAL_EXTYPE;
+				e->assignable = true;
+				return e->u.s.info;
+			}
+		}
+	} else {
+		exprInit(e, GLOBAL_EXTYPE,
+				makeConstant(p, OBJ_VAL(copyString(name->start, name->length, p->vm))));
+	}
+	return -1;
+}
+
 static void variable(Parser *p, expressionDescription *e) {
 	PRINT_FUNCTION;
-	int arg = resolveLocal(p);
-	identifierConstant(p, e, &p->previous, arg);
-	while(PREC_INDEX <= getRule(p->current.type)->precedence) {
-		advance(p);
-		ParseFn infixRule = getRule(p->previous.type)->infix;
-		infixRule(p, e);
-	}
-	if(p->previous.type == TOKEN_EQUAL) {
-		assign(p, e);
-	}
+	var_lookup(p, p->currentCompiler, &p->previous, e, true);
 }
 
 #define BUILD_RULES(t, prefix, infix, precedence) \
@@ -1102,7 +1143,8 @@ static void parsePrecedence(Parser *p, expressionDescription *e, Precedence prec
 	ParseFn prefixRule = getRule(p->previous.type)->prefix;
 	if(prefixRule == NULL) {
 		errorAtPrevious(p, "Expect expression.");
-		return;
+		exit(EXIT_COMPILE_ERROR);
+		// return;
 	}
 
 	prefixRule(p, e);
@@ -1129,8 +1171,14 @@ static void parsePrecedence(Parser *p, expressionDescription *e, Precedence prec
 static void parseVariable(Parser *p, expressionDescription *e, const char *errorMessage) {
 	PRINT_FUNCTION;
 	consume(p, TOKEN_IDENTIFIER, errorMessage);
-	int arg = declareVariable(p);
-	identifierConstant(p, e, &p->previous, arg);
+	int r = declareVariable(p);
+	if(r < 0)
+		exprInit(e, GLOBAL_EXTYPE,
+				makeConstant(p, OBJ_VAL(copyString(p->previous.start, p->previous.length, p->vm))));
+	else {
+		exprInit(e, LOCAL_EXTYPE, r);
+		e->assignable = true;
+	}
 }
 
 static void expression(Parser *p, expressionDescription *e) {
@@ -1155,8 +1203,7 @@ static void varDeclaration(Parser *p) {
 	consume(p, TOKEN_SEMICOLON, "Expect ';' after variable declaration.");
 
 	assign_adjust(p, &e);
-	if(!p->panicMode)
-		emitDefine(p, &v, &e);
+	emitDefine(p, &v, &e);
 }
 
 static void expressionStatement(Parser *p) {
@@ -1164,34 +1211,28 @@ static void expressionStatement(Parser *p) {
 	expressionDescription e;
 	expression(p, &e);
 	consume(p, TOKEN_SEMICOLON, "Expect ';' after expression.");
-	if(!p->panicMode) {
-		printExpr(stderr, &e);
-		exprAnyReg(p, &e);
-		printExpr(stderr, &e);
-		exprFree(p->currentCompiler, &e);
-		printExpr(stderr, &e);
-	}
+	printExpr(stderr, &e);
+	exprAnyReg(p, &e);
+	printExpr(stderr, &e);
+	exprFree(p->currentCompiler, &e);
+	printExpr(stderr, &e);
 }
 
 static void printStatement(Parser *p) {
 	PRINT_FUNCTION;
 	expressionDescription e;
 	expression(p, &e);
-	if(!p->panicMode) {
-		printExpr(stderr, &e);
-		Reg r = exprAnyReg(p, &e);
-		printExpr(stderr, &e);
-		consume(p, TOKEN_SEMICOLON, "Expect ';' after value.");
-		emitBytecode(p, OP_A(OP_PRINT, r));
-	}
+	printExpr(stderr, &e);
+	Reg r = exprAnyReg(p, &e);
+	printExpr(stderr, &e);
+	consume(p, TOKEN_SEMICOLON, "Expect ';' after value.");
+	emitBytecode(p, OP_A(OP_PRINT, r));
 }
 
 static OP_position expressionCondition(Parser *p) {
 	expressionDescription e;
 	expression(p, &e);
 
-	if(p->panicMode)
-		return NO_JUMP;
 	if(e.type == NIL_EXTYPE) e.type = FALSE_EXTYPE;
 	emit_branch_true(p, &e);
 	return e.false_jump;
@@ -1233,14 +1274,20 @@ static void beginScope(Compiler *current) {
 	current->scopeDepth++;
 }
 
-static size_t endScope(Compiler *c) {
+static size_t endScope(Parser *p) {
+	Compiler *c = p->currentCompiler;
 	size_t i;
+	bool closeUpvalues = false;
 	for(i = c->localCount; i>0; i--) {
-		if(c->locals[i-1].depth < c->scopeDepth)
+		Local *l = &c->locals[i-1];
+		if(l->depth < c->scopeDepth)
 			break;
+		closeUpvalues |= l->isCaptured;
 		c->actVar--;
 	}
 
+	if(closeUpvalues)
+		emit_AD(p, OP_CLOSE_UPVALUES, c->actVar, 0);
 	c->nextReg = c->actVar;
 	c->scopeDepth--;
 	assert(c->scopeDepth >= 0);
@@ -1305,7 +1352,7 @@ static void forStatement(Parser *p) {
 		jump_patch(p, bodyJump, currentChunk(p->currentCompiler)->count);
 	}
 	statement(p);
-	endScope(p->currentCompiler);
+	endScope(p);
 	jump_patch(p, emit_jump(p), start);
 	jump_to_here(p, exit_condition);
 }
@@ -1342,13 +1389,11 @@ static void function(Parser *p, expressionDescription *e, FunctionType type) {
 	// Compile the body.
 	consume(p, TOKEN_LEFT_BRACE, "Expect '{' before function body.");
 	block(p);
-	endScope(&c);
+	endScope(p);
 
 	if(!p->hadError) {
 		ObjFunction *f = endCompiler(p);
-		e->type = FUNCTION_EXTYPE;
-		e->u.v = OBJ_VAL(f);
-		e->true_jump = e->false_jump = NO_JUMP;
+		exprInit(e, RELOC_EXTYPE, emit_AD(p, OP_CLOSURE, p->currentCompiler->actVar, makeConstant(p, OBJ_VAL(f))));
 	}
 }
 
@@ -1391,7 +1436,7 @@ static void statement(Parser *p) {
 	} else if(match(p, TOKEN_LEFT_BRACE)) {
 		beginScope(p->currentCompiler);
 		block(p);
-		endScope(p->currentCompiler);
+		endScope(p);
 	} else {
 		expressionStatement(p);
 	}

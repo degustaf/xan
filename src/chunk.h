@@ -42,7 +42,11 @@ typedef enum {
 	OP_JUMP_IF_FALSE,		// Registers: D			// 22
 	OP_JUMP_IF_TRUE,		// Registers: D
 	OP_MOV,					// Registers: A, D
-	OP_CALL,				// Registers: A,B,C
+	OP_CALL,				// Registers: A,B,C		// 25
+	OP_GET_UPVAL,			// Registers: A,D
+	OP_SET_UPVAL,			// Registers: A,D
+	OP_CLOSURE,				// Registers: A,D
+	OP_CLOSE_UPVALUES,		// Registers: A
 } ByteCode;
 
 #define COMMA ,

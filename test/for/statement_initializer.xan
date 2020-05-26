@@ -1,4 +1,2 @@
-// [line 4] Error at '{': Expect expression.
-// [line 4] Error at ';': Expect ')' after for clause.
-// [line 4] Error at ')': Expect ';' after expression.
+// [line 2] Error at '{': Expect expression.
 for ({}; a < 2; a = a + 1) {}

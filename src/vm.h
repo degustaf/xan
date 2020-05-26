@@ -11,7 +11,7 @@
 #include "table.h"
 
 typedef struct {
-	ObjFunction *f;
+	ObjClosure *c;
 	uint32_t *ip;
 	Value *slots;
 } CallFrame;
@@ -26,6 +26,7 @@ struct sVM {
 
 	Table strings;
 	Table globals;
+	ObjUpvalue *openUpvalues;
 	Obj *objects;
 };
 

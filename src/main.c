@@ -64,8 +64,8 @@ static void runFile(const char *path) {
 	InterpretResult result = interpret(&vm, source);
 	free(source);
 
-	if(result == INTERPRET_COMPILE_ERROR) exit(65);
-	if(result == INTERPRET_RUNTIME_ERROR) exit(70);
+	if(result == INTERPRET_COMPILE_ERROR) exit(EXIT_COMPILE_ERROR);
+	if(result == INTERPRET_RUNTIME_ERROR) exit(EXIT_RUNTIME_ERROR);
 
 	freeVM(&vm);
 }

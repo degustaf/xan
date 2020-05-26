@@ -38,6 +38,16 @@ static Value clockNative(int argCount, Value *args) {
 	return NUMBER_VAL((double)clock() / CLOCKS_PER_SEC);
 }
 
+static Value printNative(int argCount, Value *args) {
+	// if(argCount != 1) {		// TODO add error handling to native functions.
+	// 	runtimeError(vm, "Expected 1 argument but got %d.", argCount);
+	// 	return NIL_VAL;
+	// }
+	printValue(*args);
+	printf("\n");
+	return NIL_VAL;
+}
+
 static void defineNative(VM *vm, Reg base, const char *name, NativeFn function) {
 	vm->stack[base] = OBJ_VAL(copyString(name, strlen(name), vm));
 	vm->stack[base+1] = OBJ_VAL(newNative(vm, function));
@@ -53,6 +63,7 @@ void initVM(VM *vm) {
 	vm->objects = NULL;
 	initTable(&vm->strings);
 	initTable(&vm->globals);
+	vm->openUpvalues = NULL;
 
 	defineNative(vm, 0, "clock", clockNative);
 }
@@ -75,9 +86,9 @@ static void runtimeError(VM *vm, const char* format, ...) {
 
 	for(int i = vm->frameCount - 1; i >= 0; i--) {
 		CallFrame *frame = &vm->frames[i];
-		ObjFunction *f = frame->f;
+		ObjFunction *f = frame->c->f;
 		size_t instruction = frame->ip - f->chunk.code - 1;	// We have already advanced ip.
-		fprintf(stderr, "[line %zu] in ", frame->f->chunk.lines[instruction]);
+		fprintf(stderr, "[line %zu] in ", frame->c->f->chunk.lines[instruction]);
 		if(f->name == NULL) {
 			fprintf(stderr, "script\n");
 		} else {
@@ -88,9 +99,9 @@ static void runtimeError(VM *vm, const char* format, ...) {
 	resetStack(vm);
 }
 
-static bool call(VM *vm, ObjFunction *function, Value *base, Reg argCount, Reg retCount) {
-	if(argCount != function->arity) {	// TODO make variadic functions.
-		runtimeError(vm, "Expected %d arguments but got %d.", function->arity, argCount);
+static bool call(VM *vm, ObjClosure *function, Value *base, Reg argCount, Reg retCount) {
+	if(argCount != function->f->arity) {	// TODO make variadic functions.
+		runtimeError(vm, "Expected %d arguments but got %d.", function->f->arity, argCount);
 		return false;
 	}
 	if(vm->frameCount == FRAMES_MAX) {
@@ -98,26 +109,26 @@ static bool call(VM *vm, ObjFunction *function, Value *base, Reg argCount, Reg r
 		return false;
 	}
 	CallFrame *frame = &vm->frames[vm->frameCount++];
-	if(base + function->stackUsed > vm->stackLast) {
+	if(base + function->f->stackUsed > vm->stackLast) {
 		vm->frameCount--;
 		runtimeError(vm, "Stack overflow.");
 		return false;
 	}
-	frame->f = function;
-	frame->ip = function->chunk.code;
+	frame->c = function;
+	frame->ip = function->f->chunk.code;
 
 	frame->slots = base + 1;
 	return true;
 }
 
-static bool callValue(VM *vm, Value *callee, Reg argCount, Reg retCount) {
+static bool callValue(VM *vm, Value *callee, Reg retCount, Reg argCount) {
 	if(IS_OBJ(*callee)) {
 		switch(OBJ_TYPE(*callee)) {
-			case OBJ_FUNCTION:
-				return call(vm, AS_FUNCTION(*callee), callee, argCount, retCount);
+			case OBJ_CLOSURE:
+				return call(vm, AS_CLOSURE(*callee), callee, argCount, retCount);
 			case OBJ_NATIVE: {
 				NativeFn native = AS_NATIVE(*callee);
-				Value result = native(argCount, callee);
+				Value result = native(argCount, callee+1);
 				*callee = result;
 				return true;
 			}
@@ -128,6 +139,30 @@ static bool callValue(VM *vm, Value *callee, Reg argCount, Reg retCount) {
 
 	runtimeError(vm, "Can only call functions and classes.");
 	return false;
+}
+
+static ObjUpvalue *captureUpvalue(VM *vm, Value *local) {
+	ObjUpvalue **uv = &vm->openUpvalues;
+
+	while(*uv && (*uv)->location > local)
+		uv = &(*uv)->next;
+
+	if(*uv && ((*uv)->location == local))
+		return *uv;
+
+	ObjUpvalue *ret = newUpvalue(vm, local);
+	ret->next = *uv;
+	*uv = ret;
+	return ret;
+}
+
+static void closeUpvalues(VM *vm, Value *last) {
+	while(vm->openUpvalues && vm->openUpvalues->location >= last) {
+		ObjUpvalue *uv = vm->openUpvalues;
+		uv->closed = *uv->location;
+		uv->location = &uv->closed;
+		vm->openUpvalues = uv->next;
+	}
 }
 
 #define READ_BYTECODE() (*frame->ip++)
@@ -141,7 +176,7 @@ static bool callValue(VM *vm, Value *callee, Reg argCount, Reg retCount) {
 		} \
 		frame->slots[RA(bytecode)] = valueType(AS_NUMBER(b) op AS_NUMBER(c)); \
 	} while(false)
-#define READ_STRING() AS_STRING(frame->f->chunk.constants.values[RD(bytecode)])
+#define READ_STRING() AS_STRING(frame->c->f->chunk.constants.values[RD(bytecode)])
 static InterpretResult run(VM *vm) {
 	CallFrame *frame = &vm->frames[vm->frameCount - 1];
 	while(true) {
@@ -149,7 +184,7 @@ static InterpretResult run(VM *vm) {
 		dumpStack(vm, 5);
 #endif /* DEBUG_STACK_USAGE */
 #ifdef DEBUG_TRACE_EXECUTION
-		disassembleInstruction(&frame->f->chunk, frame->ip - frame->f->chunk.code);
+		disassembleInstruction(&frame->c->f->chunk, frame->ip - frame->c->f->chunk.code);
 #endif
 #ifdef DEBUG_STACK_USAGE
 		printf("\n");
@@ -157,7 +192,7 @@ static InterpretResult run(VM *vm) {
 		uint32_t bytecode = READ_BYTECODE();
 		switch(OP(bytecode)) {
 			case OP_CONST_NUM:
-				frame->slots[RA(bytecode)] = frame->f->chunk.constants.values[RD(bytecode)];
+				frame->slots[RA(bytecode)] = frame->c->f->chunk.constants.values[RD(bytecode)];
 				break;
 			case OP_PRIMITIVE:
 				frame->slots[RA(bytecode)] = getPrimitive(RD(bytecode)); break;
@@ -241,6 +276,7 @@ static InterpretResult run(VM *vm) {
 
 				// uint16_t d = RD(bytecode);
 				frame->slots[-1] = frame->slots[RA(bytecode)];
+				closeUpvalues(vm, frame->slots);
 				vm->frameCount--;
 
 				frame = &vm->frames[vm->frameCount - 1];
@@ -280,6 +316,29 @@ OP_JUMP:
 					return INTERPRET_RUNTIME_ERROR;
 				frame = &vm->frames[vm->frameCount-1];
 				break;
+			case OP_GET_UPVAL: {
+				frame->slots[RA(bytecode)] = *frame->c->upvalues[RD(bytecode)]->location;
+				break;
+			}
+			case OP_SET_UPVAL: {
+				*frame->c->upvalues[RD(bytecode)]->location = frame->slots[RA(bytecode)];
+				break;
+			}
+			case OP_CLOSURE: {
+				ObjFunction *f = AS_FUNCTION(frame->c->f->chunk.constants.values[RD(bytecode)]);
+				ObjClosure *cl = newClosure(vm, f);
+				frame->slots[RA(bytecode)] = OBJ_VAL(cl);	// Can be found by GC
+				for(size_t i=0; i<f->uvCount; i++) {
+					if((f->uv[i] & UV_IS_LOCAL) == UV_IS_LOCAL)
+						cl->upvalues[i] = captureUpvalue(vm, frame->slots + (f->uv[i] & 0xff));
+					else
+						cl->upvalues[i] = frame->c->upvalues[f->uv[i] & 0xff];
+				}
+				break;
+			}
+			case OP_CLOSE_UPVALUES:
+				closeUpvalues(vm, frame->slots + RA(bytecode));
+				break;
 		}
 	}
 }
@@ -292,8 +351,9 @@ InterpretResult interpret(VM *vm, const char *source) {
 		return INTERPRET_COMPILE_ERROR;
 
 	assert(vm->stackSize > 0);
-	vm->stack[0] = OBJ_VAL(script);
-	call(vm, script, vm->stack, 0, 1);
+	ObjClosure *cl = newClosure(vm, script);
+	vm->stack[0] = OBJ_VAL(cl);
+	call(vm, cl, vm->stack, 0, 1);
 
 	return run(vm);
 }

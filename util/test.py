@@ -58,24 +58,14 @@ c_interpreter('xan', {
    'test/limit/loop_too_large.xan': 'skip',     # Loop limit has increased
    'test/limit/no_reuse_constants.xan': 'skip',
    'test/limit/too_many_constants.xan': 'skip',
-   'test/limit/too_many_locals.xan': 'skip',
    'test/function/too_many_arguments.xan': 'skip',
    'test/function/too_many_parameters.xan': 'skip',
-
-   # No closures.
-   'test/closure': 'skip',
-   'test/for/closure_in_body.xan': 'skip',
-   'test/for/return_closure.xan': 'skip',
-   'test/function/local_recursion.xan': 'skip',
-   'test/limit/too_many_upvalues.xan': 'skip',
-   'test/regression/40.xan': 'skip',
-   'test/while/closure_in_body.xan': 'skip',
-   'test/while/return_closure.xan': 'skip',
 
    # No classes.
    'test/assignment/to_this.xan': 'skip',
    'test/call/object.xan': 'skip',
    'test/class': 'skip',
+   'test/closure/close_over_method_parameter.xan': 'skip',
    'test/constructor': 'skip',
    'test/field': 'skip',
    'test/inheritance': 'skip',

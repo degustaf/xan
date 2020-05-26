@@ -12,6 +12,9 @@
 
 #define UINT8_COUNT (UINT8_MAX + 1)
 
+#define EXIT_COMPILE_ERROR 65
+#define EXIT_RUNTIME_ERROR 70
+
 #define XAN_STATIC_ASSERT(x) extern void assert_##__LINE__(int STATIC_ASSERTION_FAILED[(x)?1:-1])
 
 #endif /* XAN_COMMON_H */

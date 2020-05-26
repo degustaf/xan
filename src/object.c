@@ -20,10 +20,31 @@ ObjFunction *newFunction(VM *vm) {
 	ObjFunction *f = ALLOCATE_OBJ(ObjFunction, OBJ_FUNCTION);
 
 	f->arity = 0;
+	f->uvCount = 0;
 	f->stackUsed = 0;
 	f->name = NULL;
+	f->uv = NULL;
 	initChunk(&f->chunk);
 	return f;
+}
+
+ObjUpvalue *newUpvalue(VM *vm, Value *slot) {
+	ObjUpvalue *uv = ALLOCATE_OBJ(ObjUpvalue, OBJ_UPVALUE);
+	uv->location = slot;
+	uv->closed = NIL_VAL;
+	uv->next = NULL;
+	return uv;
+}
+
+ObjClosure *newClosure(VM *vm, ObjFunction *f) {
+	ObjUpvalue **uvs = ALLOCATE(ObjUpvalue*, f->uvCount);
+	for(size_t i=0; i<f->uvCount; i++)
+		uvs[i] = NULL;
+	ObjClosure *cl = ALLOCATE_OBJ(ObjClosure, OBJ_CLOSURE);
+	cl->f = f;
+	cl->upvalues = uvs;
+	cl->uvCount = f->uvCount;
+	return cl;
 }
 
 ObjNative *newNative(VM *vm, NativeFn function) {
@@ -88,11 +109,17 @@ void fprintObject(FILE *restrict stream, Value value) {
 		case OBJ_FUNCTION:
 			fprintFunction(stream, AS_FUNCTION(value));
 			break;
+		case OBJ_CLOSURE:
+			fprintFunction(stream, AS_CLOSURE(value)->f);
+			break;
 		case OBJ_NATIVE:
 			fprintf(stream, "<native fn>");
 			break;
 		case OBJ_STRING:
 			fprintf(stream, "%s", AS_CSTRING(value));
+			break;
+		case OBJ_UPVALUE:
+			fprintf(stream, "upvalue");
 			break;
 	}
 }

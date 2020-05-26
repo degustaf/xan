@@ -166,6 +166,18 @@ void disassembleInstruction(Chunk* chunk, size_t offset) {
 		case OP_CALL:
 			callInstruction("OP_CALL", bytecode);
 			return;
+		case OP_GET_UPVAL:
+			InstructionAD("OP_GET_UPVAL", bytecode);
+			return;
+		case OP_SET_UPVAL:
+			InstructionAD("OP_SET_UPVAL", bytecode);
+			return;
+		case OP_CLOSURE:
+			InstructionAD("OP_CLOSURE", bytecode);
+			return;
+		case OP_CLOSE_UPVALUES:
+			InstructionA("OP_CLOSE_UPVALUES", bytecode);
+			break;
 		default:
 			printf("Unknown opcode %d\n", OP(bytecode));
 			return;
