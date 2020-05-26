@@ -570,7 +570,7 @@ static void exprToReg(Parser *p, expressionDescription *e, Reg r) {
 		if(jump_novalue(currentChunk(p->currentCompiler), e->true_jump) || jump_novalue(currentChunk(p->currentCompiler), e->false_jump)) {
 			OP_position jump_val = e->type == JUMP_EXTYPE ? NO_JUMP : emit_jump(p);
 			jump_false = emit_AD(p, OP_PRIMITIVE, r, FALSE_EXTYPE);
-			emit_AJ(p, JUMP_EXTYPE, p->currentCompiler->nextReg, 1);
+			emit_AJ(p, OP_JUMP, p->currentCompiler->nextReg, 1);
 			jump_true = emit_AD(p, OP_PRIMITIVE, r, TRUE_EXTYPE);
 			jump_to_here(p, jump_val);
 		}
@@ -1464,6 +1464,7 @@ static void initParser(Parser *p, VM *vm, Compiler *compiler, const char *source
 	p->vm = vm;
 	p->hadError = false;
 	p->panicMode = false;
+	p->currentCompiler = NULL;
 	p->currentCompiler = initCompiler(p, compiler, TYPE_SCRIPT);
 }
 
