@@ -10,14 +10,14 @@ void initChunk(Chunk *chunk) {
 	initValueArray(&chunk->constants);
 }
 
-void freeChunk(Chunk *chunk) {
+void freeChunk(VM *vm, Chunk *chunk) {
 	FREE_ARRAY(uint32_t, chunk->code, chunk->capacity);
 	FREE_ARRAY(size_t, chunk->lines, chunk->capacity);
-	freeValueArray(&chunk->constants);
+	freeValueArray(vm, &chunk->constants);
 	initChunk(chunk);
 }
 
-size_t writeChunk(Chunk *chunk, uint32_t opcode, size_t line) {
+size_t writeChunk(VM *vm, Chunk *chunk, uint32_t opcode, size_t line) {
 	size_t count = chunk->count;
 	if(chunk->capacity < count + 1) {
 		size_t oldCapacity = chunk->capacity;
@@ -32,7 +32,7 @@ size_t writeChunk(Chunk *chunk, uint32_t opcode, size_t line) {
 	return count;
 }
 
-size_t addConstant(Chunk *chunk, Value value) {
-	writeValueArray(&chunk->constants, value);
+size_t addConstant(VM *vm, Chunk *chunk, Value value) {
+	writeValueArray(vm, &chunk->constants, value);
 	return chunk->constants.count - 1;
 }

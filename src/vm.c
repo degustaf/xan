@@ -34,11 +34,11 @@ static Value concatenate(VM *vm, ObjString *b, ObjString *c) {
 	return OBJ_VAL(result);
 }
 
-static Value clockNative(int argCount, Value *args) {
+static Value clockNative(__attribute__((unused))int argCount, __attribute__((unused))Value *args) {
 	return NUMBER_VAL((double)clock() / CLOCKS_PER_SEC);
 }
 
-static Value printNative(int argCount, Value *args) {
+static Value printNative(__attribute__((unused))int argCount, Value *args) {
 	// if(argCount != 1) {		// TODO add error handling to native functions.
 	// 	runtimeError(vm, "Expected 1 argument but got %d.", argCount);
 	// 	return NIL_VAL;
@@ -51,20 +51,34 @@ static Value printNative(int argCount, Value *args) {
 static void defineNative(VM *vm, Reg base, const char *name, NativeFn function) {
 	vm->stack[base] = OBJ_VAL(copyString(name, strlen(name), vm));
 	vm->stack[base+1] = OBJ_VAL(newNative(vm, function));
-	tableSet(&vm->globals, AS_STRING(vm->stack[base]), vm->stack[base+1]);
+	tableSet(vm, &vm->globals, AS_STRING(vm->stack[base]), vm->stack[base+1]);
 }
 
 void initVM(VM *vm) {
-	vm->stackSize = BASE_STACK_SIZE;
-	vm->stack = GROW_ARRAY(NULL, Value, 0, vm->stackSize);
-	resetStack(vm);
-	vm->stackLast = vm->stack + vm->stackSize - 1;
-
 	vm->objects = NULL;
+	vm->grayCount = 0;
+	vm->grayCapacity = 0;
+	vm->grayStack = NULL;
+	vm->openUpvalues = NULL;
+	vm->currentCompiler = NULL;
+	vm->bytesAllocated = 0;
+	vm->nextGC = 1024 * 1024;
+	vm->temp4GC = NIL_VAL;
+
 	initTable(&vm->strings);
 	initTable(&vm->globals);
-	vm->openUpvalues = NULL;
 
+	vm->stackSize = BASE_STACK_SIZE;
+	vm->stack = NULL;
+	vm->stackLast = NULL;
+	resetStack(vm);
+	vm->stack = GROW_ARRAY(NULL, Value, 0, vm->stackSize);
+	vm->stackLast = vm->stack + vm->stackSize - 1;
+	for(size_t i = 0; i <vm->stackSize; i++)
+		vm->stack[i] = NIL_VAL;
+	resetStack(vm);
+
+	vm->stackTop = vm->stack + 2;
 	defineNative(vm, 0, "clock", clockNative);
 	defineNative(vm, 0, "print", printNative);
 }
@@ -73,8 +87,8 @@ void freeVM(VM *vm) {
 	FREE_ARRAY(Value, vm->stack, vm->stackSize);
 	vm->stackSize = 0;
 	vm->stackTop = vm->stackLast = NULL;
-	freeTable(&vm->strings);
-	freeTable(&vm->globals);
+	freeTable(vm, &vm->strings);
+	freeTable(vm, &vm->globals);
 	freeObjects(vm);
 }
 
@@ -85,8 +99,8 @@ static void runtimeError(VM *vm, const char* format, ...) {
 	va_end(args);
 	fputs("\n", stderr);
 
-	for(int i = vm->frameCount - 1; i >= 0; i--) {
-		CallFrame *frame = &vm->frames[i];
+	for(size_t i = vm->frameCount; i > 0; i--) {
+		CallFrame *frame = &vm->frames[i-1];
 		ObjFunction *f = frame->c->f;
 		size_t instruction = frame->ip - f->chunk.code - 1;	// We have already advanced ip.
 		fprintf(stderr, "[line %zu] in ", frame->c->f->chunk.lines[instruction]);
@@ -115,6 +129,9 @@ static bool call(VM *vm, ObjClosure *function, Value *base, Reg argCount, Reg re
 		runtimeError(vm, "Stack overflow.");
 		return false;
 	}
+	if(base + function->f->stackUsed >= vm->stackTop)
+		vm->stackTop = base + function->f->stackUsed + 1;
+
 	frame->c = function;
 	frame->ip = function->f->chunk.code;
 
@@ -223,12 +240,12 @@ static InterpretResult run(VM *vm) {
 			}
 			case OP_DEFINE_GLOBAL: {
 				ObjString *name = READ_STRING();
-				tableSet(&vm->globals, name, frame->slots[RA(bytecode)]);
+				tableSet(vm, &vm->globals, name, frame->slots[RA(bytecode)]);
 				break;
 			}
 			case OP_SET_GLOBAL: {
 				ObjString *name = READ_STRING();
-				if(tableSet(&vm->globals, name, frame->slots[RA(bytecode)])) {
+				if(tableSet(vm, &vm->globals, name, frame->slots[RA(bytecode)])) {
 					runtimeError(vm, "Undefined variable '%s'.", name->chars);
 					return INTERPRET_RUNTIME_ERROR;
 				}
@@ -347,6 +364,7 @@ InterpretResult interpret(VM *vm, const char *source) {
 		return INTERPRET_COMPILE_ERROR;
 
 	assert(vm->stackSize > 0);
+	vm->stack[0] = OBJ_VAL(script);
 	ObjClosure *cl = newClosure(vm, script);
 	vm->stack[0] = OBJ_VAL(cl);
 	call(vm, cl, vm->stack, 0, 1);

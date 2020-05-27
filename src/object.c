@@ -9,21 +9,24 @@
 	(type*)allocateObject(sizeof(type), objectType, vm)
 
 static Obj* allocateObject(size_t size, ObjType type, VM *vm) {
-	Obj *object = (Obj*)reallocate(NULL, 0, size);
+	Obj *object = (Obj*)reallocate(vm, NULL, 0, size);
 	object->type = type;
+	object->isMarked = false;
 	object->next = vm->objects;
 	vm->objects = object;
+#ifdef DEBUG_LOG_GC
+	printf("%p allocate %ld for %s\n", (void*)object, size, ObjTypeNames[type]);
+#endif /* DEBUG_LOG_GC */
 	return object;
 }
 
-ObjFunction *newFunction(VM *vm) {
-	ObjFunction *f = ALLOCATE_OBJ(ObjFunction, OBJ_FUNCTION);
+ObjFunction *newFunction(VM *vm, size_t uvCount) {
+	ObjFunction *f = (ObjFunction*)allocateObject(sizeof(*f) + uvCount * sizeof(uint16_t), OBJ_FUNCTION, vm);
 
 	f->arity = 0;
-	f->uvCount = 0;
+	f->uvCount = uvCount;
 	f->stackUsed = 0;
 	f->name = NULL;
-	f->uv = NULL;
 	initChunk(&f->chunk);
 	return f;
 }
@@ -66,7 +69,9 @@ static ObjString* allocateString(char *chars, size_t length, uint32_t hash, VM *
 	string->length = length;
 	string->chars = chars;
 	string->hash = hash;
-	tableSet(&vm->strings, string, NIL_VAL);
+	vm->temp4GC = OBJ_VAL(string);
+	tableSet(vm, &vm->strings, string, NIL_VAL);
+	vm->temp4GC = NIL_VAL;
 
 	return string;
 }

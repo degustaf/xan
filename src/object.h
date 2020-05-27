@@ -19,16 +19,28 @@
 #define AS_STRING(value)   ((ObjString*)AS_OBJ(value))
 #define AS_CSTRING(value)  (AS_STRING(value)->chars)
 
+#define OBJ_BUILDER(X) \
+	X(STRING), \
+	X(NATIVE), \
+	X(FUNCTION), \
+	X(CLOSURE), \
+	X(UPVALUE),
+
 typedef enum {
-	OBJ_STRING,
-	OBJ_NATIVE,
-	OBJ_FUNCTION,
-	OBJ_CLOSURE,
-	OBJ_UPVALUE,
+#define ENUM_BUILDER(x) OBJ_##x
+	OBJ_BUILDER(ENUM_BUILDER)
+#undef ENUM_BUILDER
 } ObjType;
+
+static const char* const ObjTypeNames[] = {
+#define STRING_BUILDER(x) "OBJ_" #x
+	OBJ_BUILDER(STRING_BUILDER)
+#undef STRING_BUILDER
+};
 
 struct sObj {
 	ObjType type;
+	bool isMarked;
 	struct sObj *next;
 };
 
@@ -39,7 +51,7 @@ typedef struct {
 	Reg stackUsed;
 	Chunk chunk;
 	ObjString *name;
-	uint16_t *uv;
+	uint16_t uv[];
 } ObjFunction;
 
 typedef Value (*NativeFn)(int argCount, Value *args);
@@ -73,9 +85,7 @@ typedef struct {
 	size_t uvCount;
 } ObjClosure;
 
-typedef struct sVM VM;
-
-ObjFunction *newFunction(VM *vm);
+ObjFunction *newFunction(VM *vm, size_t uvCount);
 ObjUpvalue *newUpvalue(VM *vm, Value *slot);
 ObjClosure *newClosure(VM *vm, ObjFunction *f);
 ObjNative *newNative(VM *vm, NativeFn function);

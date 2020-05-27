@@ -7,36 +7,9 @@
 #include <string.h>
 
 #include "memory.h"
-#include "scanner.h"
 #ifdef DEBUG_PRINT_CODE
 #include "debug.h"
 #endif
-
-typedef struct {
-	Token name;
-	int depth;
-	bool isCaptured;
-} Local;
-
-typedef enum {
-	TYPE_FUNCTION,
-	TYPE_SCRIPT,
-} FunctionType;
-
-typedef struct Compiler {
-	struct Compiler *enclosing;
-	ObjFunction *function;
-	FunctionType type;
-	Local locals[UINT8_COUNT];
-	uint16_t upvalues[UINT8_COUNT];
-	size_t localCount;
-	int scopeDepth;
-	OP_position pendingJumpList;
-	OP_position last_target;
-	Reg nextReg;
-	Reg actVar;
-	Reg maxReg;
-} Compiler;
 
 typedef struct {
 	Token current;
@@ -65,7 +38,7 @@ typedef enum {
 } Precedence;
 
 static Chunk *currentChunk(Compiler *c) {
-	return &c->function->chunk;
+	return &c->chunk;
 }
 
 typedef enum {
@@ -283,7 +256,7 @@ static size_t emitBytecode(Parser *p, uint32_t bc) {
 	printPendingJumps(compiler);
 	jump_patch_value(p, compiler->pendingJumpList, c->count, NO_REG, c->count);
 	compiler->pendingJumpList = NO_JUMP;
-	return writeChunk(c, bc, p->previous.line);
+	return writeChunk(p->vm, c, bc, p->previous.line);
 }
 
 static size_t emit_AD(Parser *p, ByteCode op, Reg a, uint16_t d) {
@@ -787,13 +760,15 @@ static void emitReturn(Parser *p, expressionDescription *e) {
 
 static Compiler* initCompiler(Parser *p, Compiler *compiler, FunctionType type) {
 	compiler->enclosing = p->currentCompiler;
-	compiler->function = NULL;
 	compiler->type = type;
 	compiler->localCount = 0;
 	compiler->scopeDepth = 0;
-	compiler->function = newFunction(p->vm);
+	compiler->arity = 0;
+	compiler->uvCount = 0;
+	compiler->name = NULL;
+	initChunk(&compiler->chunk);
 	if(type != TYPE_SCRIPT) {
-		compiler->function->name = copyString(p->previous.start, p->previous.length, p->vm);
+		compiler->name = copyString(p->previous.start, p->previous.length, p->vm);
 	}
 	compiler->pendingJumpList = NO_JUMP;
 	compiler->nextReg = compiler->actVar = compiler->maxReg = 0;
@@ -815,9 +790,11 @@ static ObjFunction *endCompiler(Parser *p) {
 		exprInit(&e, NIL_EXTYPE, 0);
 		emitReturn(p, &e);
 	}
-	ObjFunction *f = p->currentCompiler->function;
+	ObjFunction *f = newFunction(p->vm, p->currentCompiler->uvCount);
+	f->arity = p->currentCompiler->arity;
+	memcpy(&f->chunk, &p->currentCompiler->chunk, sizeof(Chunk));
+	f->name = p->currentCompiler->name;
 	f->stackUsed = p->currentCompiler->maxReg;
-	f->uv = ALLOCATE(uint16_t, f->uvCount);
 	for(size_t i=0; i<f->uvCount; i++)
 		f->uv[i] = p->currentCompiler->upvalues[i];
 #ifdef DEBUG_PRINT_CODE
@@ -825,12 +802,12 @@ static ObjFunction *endCompiler(Parser *p) {
 		disassembleChunk(currentChunk(p->currentCompiler), f->name == NULL ? "<scripts>" : f->name->chars);
 	}
 #endif
-	p->currentCompiler = p->currentCompiler->enclosing;
+	p->vm->currentCompiler = p->currentCompiler = p->currentCompiler->enclosing;
 	return f;
 }
 
 static uint16_t makeConstant(Parser *p, Value v) {
-	size_t constant = addConstant(currentChunk(p->currentCompiler), v);
+	size_t constant = addConstant(p->vm, currentChunk(p->currentCompiler), v);
 	if(constant > UINT16_MAX) {
 		errorAtPrevious(p, "Too many constants in one chunk.");
 		return 0;
@@ -1051,6 +1028,7 @@ static void string(Parser *p, expressionDescription *e) {
 	e->u.s.info = 0;
 #endif /* DEBUG_EXPRESSION_DESCRIPTION */
 	e->u.v = OBJ_VAL(copyString(p->previous.start + 1, p->previous.length - 2, p->vm));
+	p->vm->temp4GC = e->u.v;
 	e->true_jump = e->false_jump = NO_JUMP;
 }
 
@@ -1077,8 +1055,8 @@ static void uv_mark(Compiler *c, int arg) {
 	c->locals[arg].isCaptured = true;
 }
 
-static size_t var_lookup_uv(Parser *p, Compiler *c, int arg, expressionDescription *e, bool isLocal) {
-	size_t uv_count = c->function->uvCount;
+static size_t var_lookup_uv(Parser *p, Compiler *c, int arg, bool isLocal) {
+	size_t uv_count = c->uvCount;
 	uint16_t larg = isLocal ? UV_IS_LOCAL | arg : arg;
 	for(size_t i=0; i<uv_count; i++) {
 		uint16_t *uv = c->upvalues + i;
@@ -1090,7 +1068,7 @@ static size_t var_lookup_uv(Parser *p, Compiler *c, int arg, expressionDescripti
 		exit(EXIT_COMPILE_ERROR);
 	}
 	c->upvalues[uv_count] = larg;
-	return c->function->uvCount++;
+	return c->uvCount++;
 }
 
 static int var_lookup(Parser *p, Compiler *c, Token *name, expressionDescription *e, bool local) {
@@ -1105,15 +1083,15 @@ static int var_lookup(Parser *p, Compiler *c, Token *name, expressionDescription
 		} else {
 			arg = var_lookup(p, c->enclosing, name, e, false);
 			if(arg >= 0) {
-				e->u.s.info = var_lookup_uv(p, c, arg, e, e->type == LOCAL_EXTYPE);
+				e->u.s.info = var_lookup_uv(p, c, arg, e->type == LOCAL_EXTYPE);
 				e->type = UPVAL_EXTYPE;
 				e->assignable = true;
 				return e->u.s.info;
 			}
 		}
 	} else {
-		exprInit(e, GLOBAL_EXTYPE,
-				makeConstant(p, OBJ_VAL(copyString(name->start, name->length, p->vm))));
+		p->vm->temp4GC = OBJ_VAL(copyString(name->start, name->length, p->vm));
+		exprInit(e, GLOBAL_EXTYPE, makeConstant(p, p->vm->temp4GC));
 	}
 	return -1;
 }
@@ -1172,10 +1150,12 @@ static void parseVariable(Parser *p, expressionDescription *e, const char *error
 	PRINT_FUNCTION;
 	consume(p, TOKEN_IDENTIFIER, errorMessage);
 	int r = declareVariable(p);
-	if(r < 0)
+	if(r < 0) {
+		p->vm->temp4GC = OBJ_VAL(copyString(p->previous.start, p->previous.length, p->vm));
 		exprInit(e, GLOBAL_EXTYPE,
-				makeConstant(p, OBJ_VAL(copyString(p->previous.start, p->previous.length, p->vm))));
-	else {
+				makeConstant(p, p->vm->temp4GC));
+		p->vm->temp4GC = NIL_VAL;
+	} else {
 		exprInit(e, LOCAL_EXTYPE, r);
 		e->assignable = true;
 	}
@@ -1354,15 +1334,15 @@ static void block(Parser *p) {
 
 static void function(Parser *p, expressionDescription *e, FunctionType type) {
 	Compiler c;
-	p->currentCompiler = initCompiler(p, &c, type);
+	p->vm->currentCompiler = p->currentCompiler = initCompiler(p, &c, type);
 	beginScope(&c);
 
 	// Compile parameters.
 	consume(p, TOKEN_LEFT_PAREN, "Expect '(' after function name.");
 	if(!check(p, TOKEN_RIGHT_PAREN)) {
 		do {
-			p->currentCompiler->function->arity++;
-			if(p->currentCompiler->function->arity > 255) {
+			p->currentCompiler->arity++;
+			if(p->currentCompiler->arity > 255) {
 				errorAtCurrent(p, "Cannot have more than 255 parameters.");
 			}
 
@@ -1381,6 +1361,7 @@ static void function(Parser *p, expressionDescription *e, FunctionType type) {
 
 	if(!p->hadError) {
 		ObjFunction *f = endCompiler(p);
+		p->vm->temp4GC = OBJ_VAL(f);
 		exprInit(e, RELOC_EXTYPE, emit_AD(p, OP_CLOSURE, p->currentCompiler->actVar, makeConstant(p, OBJ_VAL(f))));
 	}
 }
@@ -1451,6 +1432,7 @@ static void initParser(Parser *p, VM *vm, Compiler *compiler, const char *source
 	p->hadError = false;
 	p->panicMode = false;
 	p->currentCompiler = NULL;
+	vm->currentCompiler = compiler;
 	p->currentCompiler = initCompiler(p, compiler, TYPE_SCRIPT);
 }
 

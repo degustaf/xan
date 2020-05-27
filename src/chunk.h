@@ -111,8 +111,8 @@ typedef struct {
 } Chunk;
 
 void initChunk(Chunk *chunk);
-void freeChunk(Chunk *chunk);
-size_t writeChunk(Chunk *chunk, uint32_t opcode, size_t line);
-size_t addConstant(Chunk *chunk, Value value);
+void freeChunk(VM *vm, Chunk *chunk);
+size_t writeChunk(VM *vm, Chunk *chunk, uint32_t opcode, size_t line);
+size_t addConstant(VM *vm, Chunk *chunk, Value value);
 
 #endif /* XAN_CHUNK_H */

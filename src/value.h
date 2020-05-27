@@ -9,6 +9,7 @@
 
 typedef struct sObj Obj;
 typedef struct sObjString ObjString;
+typedef struct sVM VM;
 
 typedef enum {
 	VAL_BOOL,
@@ -48,8 +49,8 @@ typedef struct {
 
 bool valuesEqual(Value, Value);
 void initValueArray(ValueArray *array);
-void writeValueArray(ValueArray *array, Value value);
-void freeValueArray(ValueArray *array);
+void writeValueArray(VM *vm, ValueArray *array, Value value);
+void freeValueArray(VM *vm, ValueArray *array);
 void fprintValue(FILE *restrict stream, Value value);
 void printValue(Value value);
 

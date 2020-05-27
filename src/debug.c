@@ -2,9 +2,11 @@
 
 #include <stdio.h>
 
+/*
 static void simpleInstruction(const char *name) {
 	printf("%s\n", name);
 }
+*/
 
 static void constantInstruction(const char *name, Chunk *chunk, uint32_t bytecode) {
 	uint8_t reg = RA(bytecode);
