@@ -142,9 +142,6 @@ void disassembleInstruction(Chunk* chunk, size_t offset) {
 		case OP_DIVVV:
 			InstructionABC("OP_DIVVV", bytecode);
 			break;
-		case OP_PRINT:
-			InstructionA("OP_PRINT", bytecode);
-			return;
 		case OP_JUMP:
 			InstructionJ("OP_JUMP", bytecode);
 			return;

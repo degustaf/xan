@@ -66,6 +66,7 @@ void initVM(VM *vm) {
 	vm->openUpvalues = NULL;
 
 	defineNative(vm, 0, "clock", clockNative);
+	defineNative(vm, 0, "print", printNative);
 }
 
 void freeVM(VM *vm) {
@@ -265,11 +266,6 @@ static InterpretResult run(VM *vm) {
 			case OP_SUBVV:	  BINARY_OPVV(NUMBER_VAL, -); break;
 			case OP_MULVV:	  BINARY_OPVV(NUMBER_VAL, *); break;
 			case OP_DIVVV:	  BINARY_OPVV(NUMBER_VAL, /); break;
-			case OP_PRINT: {
-				printValue(frame->slots[RA(bytecode)]);
-				printf("\n");
-				break;
-			}
 			case OP_RETURN: {
 				if(vm->frameCount == 1)
 					return INTERPRET_OK;

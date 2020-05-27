@@ -1218,17 +1218,6 @@ static void expressionStatement(Parser *p) {
 	printExpr(stderr, &e);
 }
 
-static void printStatement(Parser *p) {
-	PRINT_FUNCTION;
-	expressionDescription e;
-	expression(p, &e);
-	printExpr(stderr, &e);
-	Reg r = exprAnyReg(p, &e);
-	printExpr(stderr, &e);
-	consume(p, TOKEN_SEMICOLON, "Expect ';' after value.");
-	emitBytecode(p, OP_A(OP_PRINT, r));
-}
-
 static OP_position expressionCondition(Parser *p) {
 	expressionDescription e;
 	expression(p, &e);
@@ -1308,7 +1297,6 @@ static void synchronize(Parser *p) {
 			case TOKEN_FOR:
 			case TOKEN_IF:
 			case TOKEN_WHILE:
-			case TOKEN_PRINT:
 			case TOKEN_RETURN:
 				return;
 			default:
@@ -1423,9 +1411,7 @@ static void returnStatement(Parser *p) {
 
 static void statement(Parser *p) {
 	PRINT_FUNCTION;
-	if(match(p, TOKEN_PRINT)) {
-		printStatement(p);
-	} else if(match(p, TOKEN_IF)) {
+	if(match(p, TOKEN_IF)) {
 		ifStatement(p);
 	} else if(match(p, TOKEN_RETURN)) {
 		returnStatement(p);

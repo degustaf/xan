@@ -1,10 +1,10 @@
 {
   var a = 1;
-  print a; // expect: 1
+  print(a); // expect: 1
   var b = a + 2;
-  print b; // expect: 3
+  print(b); // expect: 3
   var c = a + 3;
-  print c; // expect: 4
+  print(c); // expect: 4
   var d = b + 5;
-  print d; // expect: 8
+  print(d); // expect: 8
 }

@@ -35,7 +35,6 @@
 	X(TOKEN_IF, NULL,     NULL,    PREC_NONE ),\
 	X(TOKEN_NIL, literal,  NULL,    PREC_NONE ),\
 	X(TOKEN_OR, NULL,     binary,    PREC_OR ),\
-	X(TOKEN_PRINT, NULL,     NULL,    PREC_NONE ),\
 	X(TOKEN_RETURN, NULL,     NULL,    PREC_NONE ),\
 	X(TOKEN_SUPER, NULL,     NULL,    PREC_NONE ),\
 	X(TOKEN_THIS, NULL,     NULL,    PREC_NONE ),\

@@ -1,10 +1,10 @@
 // Bound methods have identity equality.
 class Foo {
   method() {
-    print "method";
+    print("method");
   }
   other() {
-    print "other";
+    print("other");
   }
 }
 

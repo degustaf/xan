@@ -155,7 +155,6 @@ static TokenType identifierType(Scanner *s) {
 		case 'i': return checkKeyword(s, 1, 1, "f", TOKEN_IF);
 		case 'n': return checkKeyword(s, 1, 2, "il", TOKEN_NIL);
 		case 'o': return checkKeyword(s, 1, 1, "r", TOKEN_OR);
-		case 'p': return checkKeyword(s, 1, 4, "rint", TOKEN_PRINT);
 		case 'r': return checkKeyword(s, 1, 5, "eturn", TOKEN_RETURN);
 		case 's': return checkKeyword(s, 1, 4, "uper", TOKEN_SUPER);
 		case 't':
