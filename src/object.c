@@ -50,6 +50,19 @@ ObjClosure *newClosure(VM *vm, ObjFunction *f) {
 	return cl;
 }
 
+ObjClass *newClass(VM *vm, ObjString *name) {
+	ObjClass *klass = ALLOCATE_OBJ(ObjClass, OBJ_CLASS);
+	klass->name = name;
+	return klass;
+}
+
+ObjInstance *newInstance(VM *vm, ObjClass *klass) {
+	ObjInstance *o = ALLOCATE_OBJ(ObjInstance, OBJ_INSTANCE);
+	o->klass = klass;
+	initTable(&o->fields);
+	return o;
+}
+
 ObjNative *newNative(VM *vm, NativeFn function) {
 	ObjNative *native = ALLOCATE_OBJ(ObjNative, OBJ_NATIVE);
 	native->function = function;
@@ -125,6 +138,12 @@ void fprintObject(FILE *restrict stream, Value value) {
 			break;
 		case OBJ_UPVALUE:
 			fprintf(stream, "upvalue");
+			break;
+		case OBJ_CLASS:
+			fprintf(stream, "%s", AS_CLASS(value)->name->chars);
+			break;
+		case OBJ_INSTANCE:
+			fprintf(stream, "%s instance", AS_INSTANCE(value)->klass->name->chars);
 			break;
 	}
 }

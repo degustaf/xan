@@ -2,7 +2,6 @@
 #define XAN_CHUNK_H
 
 #include <assert.h>
-#include <stdint.h>
 
 #include "value.h"
 
@@ -46,6 +45,9 @@ typedef enum {
 	OP_SET_UPVAL,			// Registers: A,D
 	OP_CLOSURE,				// Registers: A,D
 	OP_CLOSE_UPVALUES,		// Registers: A
+	OP_CLASS,				// Registers: A,D
+	OP_GET_PROPERTY,		// Registers: A,B,C		// 30
+	OP_SET_PROPERTY,		// Registers: A,B,C
 } ByteCode;
 
 #define COMMA ,
@@ -66,9 +68,6 @@ static inline Value getPrimitive(primitive p) {
 		default: assert(false);
 	}
 }
-
-typedef uint8_t Reg;			// a register, i.e. a stack offset.
-typedef uint32_t OP_position;	// an index into a bytecode array.
 
 // These macros are designed to put data into the uint32_t bytecodes.
 #define OP_A(op,a) (((uint32_t) (op)) | (((uint32_t) (a)) << 8))
@@ -101,14 +100,6 @@ static inline void setbc_d(uint32_t *p, uint16_t x) {
 #define setbc_a(p, x)	setbc(p, (x), 1)
 #define setbc_b(p, x)	setbc(p, (x), 2)
 #define setbc_c(p, x)	setbc(p, (x), 3)
-
-typedef struct {
-	size_t count;
-	size_t capacity;
-	uint32_t *code;
-	size_t *lines;
-	ValueArray constants;
-} Chunk;
 
 void initChunk(Chunk *chunk);
 void freeChunk(VM *vm, Chunk *chunk);

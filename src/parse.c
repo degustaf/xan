@@ -45,16 +45,16 @@ typedef enum {
 #define PRIM_EXTYPE(x) x##_EXTYPE
 	PRIMITIVE_BUILDER(PRIM_EXTYPE, COMMA),
 #undef PRIM_EXTYPE
-	FUNCTION_EXTYPE,	// = 3
-	STRING_EXTYPE,
+	STRING_EXTYPE,		//3
 	NUMBER_EXTYPE,
-	RELOC_EXTYPE,
-	NONRELOC_EXTYPE,	// u.r.r is result register.
+	RELOC_EXTYPE,		//5
+	NONRELOC_EXTYPE,		// u.r.r is result register.
 	GLOBAL_EXTYPE,
-	UPVAL_EXTYPE,		// u.s.info is ????
-	LOCAL_EXTYPE,		// u.r.r is stack register.
-	JUMP_EXTYPE,		// u.s.info is instruction number.
-	CALL_EXTYPE,		// u.s.info is instruction number.
+	UPVAL_EXTYPE,			// u.s.info is ????
+	LOCAL_EXTYPE,			// u.r.r is stack register.
+	JUMP_EXTYPE,		//10// u.s.info is instruction number.
+	CALL_EXTYPE,			// u.s.info is instruction number.
+	INDEXED_EXTYPE,			// ????
 	VOID_EXTYPE,
 } expressionType;
 
@@ -113,7 +113,7 @@ static void printExpr(FILE *restrict stream, expressionDescription *e) {
 			fprintf(stream, "u.s.info = %zd", e->u.s.info);
 	}
 #endif /* DEBUG_EXPRESSION_DESCRIPTION */
-	fprintf(stream, "; true_jump = %d; false_jump = %d;}\n", e->true_jump, e->false_jump);
+	fprintf(stream, "; assignable = %d; true_jump = %d; false_jump = %d;}\n",e->assignable,  e->true_jump, e->false_jump);
 }
 #else /* DEBUG_PARSER */
 #define printExpr(stream,e)
@@ -332,6 +332,14 @@ static void exprDischarge(Parser *p, expressionDescription *e) {
 			e->u.s.info = emit_AD(p, OP_GET_GLOBAL, 0, e->u.s.info);
 			e->type = RELOC_EXTYPE;
 			return;
+		case INDEXED_EXTYPE: {
+			Reg r = e->u.s.aux;
+			regFree(p->currentCompiler, r);
+			size_t ins = emit_ABC(p, OP_GET_PROPERTY, 0, e->u.s.info, r);
+			regFree(p->currentCompiler, e->u.s.info);
+			e->u.s.info = ins;
+			e->type = RELOC_EXTYPE;
+		}
 		case CALL_EXTYPE:
 			e->u.s.info = e->u.s.aux;
 			// intentional fallthrough.
@@ -384,7 +392,6 @@ static void exprToRegNoBranch(Parser *p, expressionDescription *e, Reg r) {
 			break;
 		case STRING_EXTYPE:
 		case NUMBER_EXTYPE:
-		case FUNCTION_EXTYPE:
 			instruction = OP_AD(OP_CONST_NUM, r, makeConstant(p, e->u.v));
 			break;
 		case RELOC_EXTYPE:
@@ -696,8 +703,15 @@ static void emit_store(Parser *p, expressionDescription *variable, expressionDes
 	} else if(variable->type == GLOBAL_EXTYPE) {
 		Reg r = exprAnyReg(p, e);
 		emit_AD(p, OP_SET_GLOBAL, r, variable->u.s.info);
+	} else {
+		assert(variable->type == INDEXED_EXTYPE);
+		Reg ra = exprAnyReg(p, e);
+		Reg rc = variable->u.s.aux;
+		if((e->type == NONRELOC_EXTYPE) && (ra >= p->currentCompiler->actVar) && (rc >= ra))
+			regFree(p->currentCompiler, rc);
+		emit_ABC(p, OP_SET_PROPERTY, ra, variable->u.s.info, rc);
+		exprFree(p->currentCompiler, e);
 	}
-	// TODO indexed
 }
 
 typedef void (*ParseFn)(Parser*, expressionDescription*);
@@ -881,7 +895,7 @@ static void assign(Parser *p, expressionDescription *e) {
 	PRINT_FUNCTION;
 	printExpr(stderr, e);
 
-	if((e->type != NONRELOC_EXTYPE && e->type != GLOBAL_EXTYPE && e->type != LOCAL_EXTYPE && e->type != UPVAL_EXTYPE) || !e->assignable) {
+	if((e->type != NONRELOC_EXTYPE && e->type != GLOBAL_EXTYPE && e->type != LOCAL_EXTYPE && e->type != UPVAL_EXTYPE && e->type != INDEXED_EXTYPE) || !e->assignable) {
 		errorAtPrevious(p, "Invalid assignment target.");
 		return;
 	}
@@ -987,6 +1001,22 @@ static void string(Parser *p, expressionDescription *e) {
 }
 
 static void primaryExpression(Parser *p, expressionDescription *e);
+
+static void expressionIndexed(Parser *p, expressionDescription *e, expressionDescription *k) {
+	PRINT_FUNCTION;
+	e->type = INDEXED_EXTYPE;
+	e->u.s.aux = exprAnyReg(p, k);
+	e->assignable = true;
+}
+
+static void dot(Parser *p, expressionDescription *v) {
+	PRINT_FUNCTION;
+	consume(p, TOKEN_IDENTIFIER, "Expect property name after '.'.");
+	exprAnyReg(p, v);
+	expressionDescription key;
+	string(p, &key);
+	expressionIndexed(p, v, &key);
+}
 
 static void unary(Parser *p, expressionDescription *e) {
 	PRINT_FUNCTION;
@@ -1325,11 +1355,21 @@ static void function(Parser *p, expressionDescription *e, FunctionType type) {
 	block(p);
 	endScope(p);
 
-	if(!p->hadError) {
-		ObjFunction *f = endCompiler(p);
-		p->vm->temp4GC = OBJ_VAL(f);
-		exprInit(e, RELOC_EXTYPE, emit_AD(p, OP_CLOSURE, p->currentCompiler->actVar, makeConstant(p, OBJ_VAL(f))));
-	}
+	ObjFunction *f = endCompiler(p);
+	p->vm->temp4GC = OBJ_VAL(f);
+	exprInit(e, RELOC_EXTYPE, emit_AD(p, OP_CLOSURE, p->currentCompiler->actVar, makeConstant(p, OBJ_VAL(f))));
+}
+
+static void classDeclaration(Parser *p) {
+	PRINT_FUNCTION;
+	expressionDescription name, e;
+	parseVariable(p, &name, "Expect class name.");
+	consume(p, TOKEN_LEFT_BRACE, "Expect '{' before class body.");
+	consume(p, TOKEN_RIGHT_BRACE, "Expect '}' after class body.");
+	printExpr(stderr, &name);
+	exprInit(&e, RELOC_EXTYPE, emit_AD(p, OP_CLASS, p->currentCompiler->actVar, name.u.s.info));
+	exprNextReg(p, &e);
+	emitDefine(p, &name, &e);
 }
 
 static void returnStatement(Parser *p) {
@@ -1350,10 +1390,8 @@ static void funDeclaration(Parser *p) {
 	parseVariable(p, &name, "Expect function name.");
 	markInitialized(p);
 	function(p, &e, TYPE_FUNCTION);
-	if(!p->hadError) {
-		exprNextReg(p, &e);
-		emitDefine(p, &name, &e);
-	}
+	exprNextReg(p, &e);
+	emitDefine(p, &name, &e);
 }
 
 static void varDeclaration(Parser *p) {
@@ -1438,7 +1476,9 @@ static void statement(Parser *p) {
 
 static void declaration(Parser *p) {
 	PRINT_FUNCTION;
-	if(match(p, TOKEN_FUN)) {
+	if(match(p, TOKEN_CLASS)) {
+		classDeclaration(p);
+	} else if(match(p, TOKEN_FUN)) {
 		funDeclaration(p);
 	} else if(match(p, TOKEN_VAR)) {
 		varDeclaration(p);

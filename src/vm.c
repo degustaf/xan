@@ -142,6 +142,11 @@ static bool call(VM *vm, ObjClosure *function, Value *base, Reg argCount, Reg re
 static bool callValue(VM *vm, Value *callee, Reg retCount, Reg argCount) {
 	if(IS_OBJ(*callee)) {
 		switch(OBJ_TYPE(*callee)) {
+			case OBJ_CLASS: {
+				ObjClass *klass = AS_CLASS(*callee);
+				*callee = OBJ_VAL(newInstance(vm, klass));
+				return true;
+			}
 			case OBJ_CLOSURE:
 				return call(vm, AS_CLOSURE(*callee), callee, argCount, retCount);
 			case OBJ_NATIVE: {
@@ -352,6 +357,11 @@ OP_JUMP:
 			case OP_CLOSE_UPVALUES:
 				closeUpvalues(vm, frame->slots + RA(bytecode));
 				break;
+			case OP_CLASS: {
+				ObjClass *klass = newClass(vm, AS_STRING(frame->c->f->chunk.constants.values[RD(bytecode)]));
+				frame->slots[RA(bytecode)] = OBJ_VAL(klass);
+				break;
+			}
 		}
 	}
 }

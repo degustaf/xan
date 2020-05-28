@@ -12,82 +12,22 @@
 #define IS_CLOSURE(value)  isObjType(value, OBJ_CLOSURE)
 #define IS_NATIVE(value)   isObjType(value, OBJ_NATIVE)
 #define IS_STRING(value)   isObjType(value, OBJ_STRING)
+#define IS_CLASS(value)    isObjType(value, OBJ_CLASS)
+#define IS_INSTANCE(value) isObjType(value, OBJ_INSTANCE)
 
 #define AS_FUNCTION(value) ((ObjFunction*)AS_OBJ(value))
 #define AS_CLOSURE(value)  ((ObjClosure*)AS_OBJ(value))
 #define AS_NATIVE(value)   (((ObjNative*)AS_OBJ(value))->function)
 #define AS_STRING(value)   ((ObjString*)AS_OBJ(value))
 #define AS_CSTRING(value)  (AS_STRING(value)->chars)
-
-#define OBJ_BUILDER(X) \
-	X(STRING), \
-	X(NATIVE), \
-	X(FUNCTION), \
-	X(CLOSURE), \
-	X(UPVALUE),
-
-typedef enum {
-#define ENUM_BUILDER(x) OBJ_##x
-	OBJ_BUILDER(ENUM_BUILDER)
-#undef ENUM_BUILDER
-} ObjType;
-
-static const char* const ObjTypeNames[] = {
-#define STRING_BUILDER(x) "OBJ_" #x
-	OBJ_BUILDER(STRING_BUILDER)
-#undef STRING_BUILDER
-};
-
-struct sObj {
-	ObjType type;
-	bool isMarked;
-	struct sObj *next;
-};
-
-typedef struct {
-	Obj obj;
-	int arity;
-	size_t uvCount;
-	Reg stackUsed;
-	Chunk chunk;
-	ObjString *name;
-	uint16_t uv[];
-} ObjFunction;
-
-typedef Value (*NativeFn)(int argCount, Value *args);
-
-typedef struct {
-	Obj obj;
-	NativeFn function;
-} ObjNative;
-
-// TODO turn chars into a flexible array member to optimize by minimizing allocations.
-struct sObjString {
-	Obj obj;
-	size_t length;
-	uint32_t hash;
-	char *chars;
-};
-
-#define UV_IS_LOCAL 0x100
-
-typedef struct sUpvalue {
-	Obj obj;
-	Value *location;
-	Value closed;
-	struct sUpvalue *next;
-} ObjUpvalue;
-
-typedef struct {
-	Obj obj;
-	ObjFunction *f;
-	ObjUpvalue **upvalues;
-	size_t uvCount;
-} ObjClosure;
+#define AS_CLASS(value)    ((ObjClass*)AS_OBJ(value))
+#define AS_INSTANCE(value) ((ObjInstance*)AS_OBJ(value))
 
 ObjFunction *newFunction(VM *vm, size_t uvCount);
 ObjUpvalue *newUpvalue(VM *vm, Value *slot);
 ObjClosure *newClosure(VM *vm, ObjFunction *f);
+ObjClass *newClass(VM *vm, ObjString *name);
+ObjInstance *newInstance(VM *vm, ObjClass *klass);
 ObjNative *newNative(VM *vm, NativeFn function);
 ObjString *takeString(char *chars, size_t length, VM *vm);
 ObjString *copyString(const char *chars, size_t length, VM *vm);

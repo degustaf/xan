@@ -96,6 +96,11 @@ static void blackenObject(VM *vm, Obj *o) {
 	printf("\n");
 #endif /* DEBUG_LOG_GC */
 	switch(o->type) {
+		case OBJ_CLASS: {
+			ObjClass *klass = (ObjClass*)o;
+			markObject(vm, (Obj*)klass->name);
+			break;
+		}
 		case OBJ_CLOSURE: {
 			ObjClosure *cl = (ObjClosure*)o;
 			markObject(vm, (Obj*)cl->f);
@@ -107,6 +112,12 @@ static void blackenObject(VM *vm, Obj *o) {
 			ObjFunction *f = (ObjFunction*)o;
 			markObject(vm, (Obj*)f->name);
 			markArray(vm, &f->chunk.constants);
+			break;
+		}
+		case OBJ_INSTANCE: {
+			ObjInstance *instance = (ObjInstance*)o;
+			markObject(vm, (Obj*)instance->klass);
+			markTable(vm, &instance->fields);
 			break;
 		}
 		case OBJ_UPVALUE:
@@ -142,16 +153,24 @@ static void freeObject(VM *vm, Obj *object) {
 			FREE(ObjClosure, object);
 			break;
 		}
-		case OBJ_NATIVE: {
-			FREE(ObjNative, object);
-			break;
-		}
 		case OBJ_STRING: {
 			ObjString *string = (ObjString*)object;
 			FREE_ARRAY(char, string->chars, string->length + 1);
 			FREE(ObjString, object);
 			break;
 		}
+		case OBJ_INSTANCE: {
+			ObjInstance *instance = (ObjInstance*)object;
+			freeTable(vm, &instance->fields);
+			FREE(ObjInstance, object);
+			break;
+		}
+		case OBJ_CLASS:
+			FREE(ObjClass, object);
+			break;
+		case OBJ_NATIVE:
+			FREE(ObjNative, object);
+			break;
 		case OBJ_UPVALUE:
 			FREE(ObjUpvalue, object);
 			break;

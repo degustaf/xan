@@ -1,18 +1,7 @@
 #ifndef XAN_TABLE_H
 #define XAN_TABLE_H
 
-#include "object.h"
-
-typedef struct {
-	ObjString *key;
-	Value value;
-} Entry;
-
-typedef struct {
-	size_t count;
-	size_t capacity;
-	Entry *entries;
-} Table;
+#include "value.h"
 
 void initTable(Table *t);
 void freeTable(VM *vm, Table *t);

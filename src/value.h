@@ -1,31 +1,9 @@
 #ifndef XAN_VALUE_H
 #define XAN_VALUE_H
 
-#include "common.h"
+#include "type.h"
 
-#include <stdbool.h>
-#include <stddef.h>
 #include <stdio.h>
-
-typedef struct sObj Obj;
-typedef struct sObjString ObjString;
-typedef struct sVM VM;
-
-typedef enum {
-	VAL_BOOL,
-	VAL_NIL,
-	VAL_NUMBER,
-	VAL_OBJ,
-} ValueType;
-
-typedef struct {
-	ValueType type;
-	union {
-		bool boolean;
-		double number;
-		Obj *obj;
-	} as;
-} Value;
 
 #define IS_BOOL(value)    ((value).type == VAL_BOOL)
 #define IS_NIL(value)     ((value).type == VAL_NIL)
@@ -40,12 +18,6 @@ typedef struct {
 #define NIL_VAL           ((Value){ VAL_NIL, { .number = 0 } })
 #define NUMBER_VAL(value) ((Value){ VAL_NUMBER, { .number = value } })
 #define OBJ_VAL(object)   ((Value){ VAL_OBJ, { .obj = (Obj*)object } })
-
-typedef struct {
-	size_t capacity;
-	size_t count;
-	Value *values;
-} ValueArray;
 
 bool valuesEqual(Value, Value);
 void initValueArray(ValueArray *array);

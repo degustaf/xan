@@ -177,6 +177,9 @@ void disassembleInstruction(Chunk* chunk, size_t offset) {
 		case OP_CLOSE_UPVALUES:
 			InstructionA("OP_CLOSE_UPVALUES", bytecode);
 			break;
+		case OP_CLASS:
+			constantInstruction("OP_CLASS", chunk, bytecode);
+			break;
 		default:
 			printf("Unknown opcode %d\n", OP(bytecode));
 			return;
