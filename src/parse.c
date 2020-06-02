@@ -127,6 +127,12 @@ static void printExpr(FILE *restrict stream, expressionDescription *e) {
 #define PRINT_FUNCTION
 #endif /* DEBUG_PARSER */
 
+#ifdef DEBUG_PARSER
+#define PRINT_TOKEN fprintf(stderr, "Token %s in %s.\n", TokenNames[p->current.type], __func__)
+#else /* DEBUG_PARSER */
+#define PRINT_TOKEN
+#endif /* DEBUG_PARSER */
+
 #ifdef DEBUG_JUMP_LISTS
 	static void printPendingJumps(Compiler *c) {
 		fprintf(stderr, "pendingJumpList = %d\ncode = {", c->pendingJumpList);
@@ -644,6 +650,7 @@ static void emit_comp(Parser *p, ByteCode op, expressionDescription *e1, express
 }
 
 static void emit_binop_left(Parser *p, ByteCode op, expressionDescription *e) {
+	PRINT_FUNCTION;
 	switch(op) {
 		case OP_AND:
 			emit_branch_true(p, e);
@@ -686,7 +693,6 @@ static void emit_store(Parser *p, expressionDescription *variable, expressionDes
 	} else if(variable->type == UPVAL_EXTYPE) {
 		expr_toval(p, e);
 		emit_AD(p, OP_SET_UPVAL, variable->u.s.info, exprAnyReg(p, e));
-	// TODO Upvalue
 	} else if(variable->type == GLOBAL_EXTYPE) {
 		Reg r = exprAnyReg(p, e);
 		emit_AD(p, OP_SET_GLOBAL, r, variable->u.s.info);
@@ -696,13 +702,8 @@ static void emit_store(Parser *p, expressionDescription *variable, expressionDes
 
 typedef void (*ParseFn)(Parser*, expressionDescription*);
 
-typedef struct {
-	ParseFn prefix;
-	ParseFn infix;
-	Precedence precedence;
-} ParseRule;
-
 static void advance(Parser *p) {
+	PRINT_FUNCTION;
 	p->previous = p->current;
 
 	while(true) {
@@ -863,25 +864,8 @@ static int declareVariable(Parser *p) {
 	return ret;
 }
 
-/*
-static Reg incReg(Parser *p) {
-	PRINT_FUNCTION;
-#ifdef DEBUG_PARSER
-	fprintf(stderr, "nextReg = %d\n", p->currentCompiler->nextReg);
-#endif 
-	return p->currentCompiler->nextReg++;
-}
-
-static Reg emitConstant(Parser *p, Value v) {
-	PRINT_FUNCTION;
-	Reg r = incReg(p);
-	emitBytecode(p, OP_AD(OP_CONST_NUM, r, makeConstant(p, v)));
-	return r;
-}
-*/
-
-static ParseRule* getRule(TokenType type);
-static void parsePrecedence(Parser *p, expressionDescription *e, Precedence precedence);
+static Precedence getRule(TokenType type);
+static void binary(Parser *p, expressionDescription *e, Precedence precedence);
 static void expression(Parser *p, expressionDescription *e);
 
 static void assign_adjust(Parser *p, /* uint8_t nVars, uint8_t nExps,*/ expressionDescription *e) {
@@ -896,12 +880,14 @@ static void assign_adjust(Parser *p, /* uint8_t nVars, uint8_t nExps,*/ expressi
 static void assign(Parser *p, expressionDescription *e) {
 	PRINT_FUNCTION;
 	printExpr(stderr, e);
+
 	if((e->type != NONRELOC_EXTYPE && e->type != GLOBAL_EXTYPE && e->type != LOCAL_EXTYPE && e->type != UPVAL_EXTYPE) || !e->assignable) {
 		errorAtPrevious(p, "Invalid assignment target.");
 		return;
 	}
+
 	expressionDescription e2;
-	parsePrecedence(p, &e2, PREC_ASSIGNMENT);
+	expression(p, &e2);
 	if(e2.type == CALL_EXTYPE) {
 		e2.u.s.info = e2.u.s.aux;
 		e2.type = NONRELOC_EXTYPE;
@@ -909,38 +895,6 @@ static void assign(Parser *p, expressionDescription *e) {
 	emit_store(p, e, &e2);
 	e->type = NONRELOC_EXTYPE;
 	e->u.r.r = e2.type == NONRELOC_EXTYPE ? e2.u.r.r : e2.u.s.info;
-}
-
-static void binary(Parser *p, expressionDescription *e) {
-	PRINT_FUNCTION;
-	printExpr(stderr, e);
-	TokenType operatorType = p->previous.type;
-
-	ParseRule *rule = getRule(operatorType);
-
-	ByteCode op;
-	switch(operatorType) {
-		case TOKEN_PLUS: op = OP_ADDVV; break;
-		case TOKEN_MINUS: op = OP_SUBVV; break;
-		case TOKEN_STAR: op = OP_MULVV; break;
-		case TOKEN_SLASH: op = OP_DIVVV; break;
-		case TOKEN_BANG_EQUAL: op = OP_NEQ; break;
-		case TOKEN_EQUAL_EQUAL: op = OP_EQUAL; break;
-		case TOKEN_GREATER: op = OP_GREATER; break;
-		case TOKEN_GREATER_EQUAL: op = OP_GEQ; break;
-		case TOKEN_LESS: op = OP_LESS; break;
-		case TOKEN_LESS_EQUAL: op = OP_LEQ; break;
-		case TOKEN_AND: op = OP_AND; break;
-		case TOKEN_OR: op = OP_OR; break;
-		default: assert(false);
-	}
-
-	emit_binop_left(p, op, e);
-
-	expressionDescription e2;
-	parsePrecedence(p, &e2, (Precedence)(rule->precedence + 1));
-
-	emit_binop(p, op, e, &e2);
 }
 
 #define PRIM_CASE(P) \
@@ -961,7 +915,7 @@ static void literal(Parser *p, expressionDescription *e) {
 
 static void grouping(Parser *p, expressionDescription *e) {
 	PRINT_FUNCTION;
-	parsePrecedence(p, e, PREC_ASSIGNMENT);
+	expression(p, e);
 	consume(p, TOKEN_RIGHT_PAREN, "Expect ')' after expression.");
 	if(e->type == NONRELOC_EXTYPE || e->type == GLOBAL_EXTYPE)
 		e->assignable = false;
@@ -1032,21 +986,34 @@ static void string(Parser *p, expressionDescription *e) {
 	e->true_jump = e->false_jump = NO_JUMP;
 }
 
+static void primaryExpression(Parser *p, expressionDescription *e);
+
 static void unary(Parser *p, expressionDescription *e) {
 	PRINT_FUNCTION;
+	PRINT_TOKEN;
 
 	ByteCode op;
-	switch(p->previous.type) {
+	switch(p->current.type) {
 		case TOKEN_BANG: op = OP_NOT; break;
 		case TOKEN_MINUS: op = OP_NEGATE; break;
-		default: assert(false);
+		case TOKEN_CLASS:
+		case TOKEN_DOT:
+		case TOKEN_FUN:
+		case TOKEN_LEFT_BRACE:
+		case TOKEN_VAR:
+			errorAtCurrent(p, "Expect expression.");
+			exit(EXIT_COMPILE_ERROR);
+			break;
+		default:
+			primaryExpression(p, e);
+			// intentional fallthrough
+		case TOKEN_SEMICOLON:
+			return;
 	}
 
-	parsePrecedence(p, e, PREC_UNARY);
-
-	printExpr(stderr, e);
+	advance(p);
+	binary(p, e, PREC_UNARY);
 	exprAnyReg(p, e);
-	printExpr(stderr, e);
 	exprFree(p->currentCompiler, e);
 	exprInit(e, RELOC_EXTYPE, emit_AD(p, op, 0, e->u.r.r));
 }
@@ -1079,7 +1046,7 @@ static int var_lookup(Parser *p, Compiler *c, Token *name, expressionDescription
 			e->assignable = true;
 			if(!local)
 				uv_mark(c, arg+1);
-			return arg;		// TODO vstack?
+			return arg;
 		} else {
 			arg = var_lookup(p, c->enclosing, name, e, false);
 			if(arg >= 0) {
@@ -1096,54 +1063,106 @@ static int var_lookup(Parser *p, Compiler *c, Token *name, expressionDescription
 	return -1;
 }
 
-static void variable(Parser *p, expressionDescription *e) {
+static void primaryExpression(Parser *p, expressionDescription *e) {
 	PRINT_FUNCTION;
-	var_lookup(p, p->currentCompiler, &p->previous, e, true);
+	PRINT_TOKEN;
+
+	advance(p);
+	switch(p->previous.type) {
+		case TOKEN_LEFT_PAREN:
+			grouping(p, e);
+			break;
+		case TOKEN_MINUS:
+		case TOKEN_BANG:
+			unary(p, e);
+			break;
+		case TOKEN_IDENTIFIER:
+			var_lookup(p, p->currentCompiler, &p->previous, e, true);
+			break;
+		case TOKEN_STRING:
+			string(p, e);
+			break;
+		case TOKEN_NUMBER:
+			number(p, e);
+			break;
+		case TOKEN_FALSE:
+		case TOKEN_TRUE:
+		case TOKEN_NIL:
+			literal(p, e);
+			break;
+		default:
+			break;
+	}
+
+	while(true) {
+		if(match(p, TOKEN_LEFT_PAREN)) {
+			call(p, e);
+		} else {
+			break;
+		}
+	}
 }
 
-#define BUILD_RULES(t, prefix, infix, precedence) \
-{ prefix, infix, precedence }
-ParseRule rules[] = {
+#define BUILD_RULES(t, precedence) precedence
+Precedence rules[] = {
 	TOKEN_BUILDER(BUILD_RULES)
 };
 #undef BUILD_RULES
 
-static ParseRule* getRule(TokenType type) {
-#ifdef DEBUG_PARSER
-	fprintf(stderr, "In function %s\t tokenType = %s\n", __func__, TokenNames[type]);
-#endif /* DEBUG_PARSER */
-	return &rules[type];
+static Precedence getRule(TokenType type) {
+	PRINT_FUNCTION;
+	return rules[type];
 }
 
-static void parsePrecedence(Parser *p, expressionDescription *e, Precedence precedence) {
+static void binary(Parser *p, expressionDescription *e, Precedence precedence) {
 	PRINT_FUNCTION;
-	advance(p);
-	ParseFn prefixRule = getRule(p->previous.type)->prefix;
-	if(prefixRule == NULL) {
-		errorAtPrevious(p, "Expect expression.");
-		exit(EXIT_COMPILE_ERROR);
-		// return;
-	}
-
-	prefixRule(p, e);
-
+	PRINT_TOKEN;
 #ifdef DEBUG_PARSER
-	fprintf(stderr, "precedence = %d\tgetRule->precedence = %d\n", precedence, getRule(p->current.type)->precedence);
-#endif
+	fprintf(stderr, "precedence = %d\n", precedence);
+#endif /* DEBUG_PARSER */
+	printExpr(stderr, e);
+	unary(p, e);
+	printExpr(stderr, e);
 
-	while(precedence <= getRule(p->current.type)->precedence) {
+	while(true) {
+		ByteCode op;
+		TokenType operatorType = p->current.type;
+		PRINT_TOKEN;
+
+		switch(operatorType) {
+			case TOKEN_PLUS: op = OP_ADDVV; break;
+			case TOKEN_MINUS: op = OP_SUBVV; break;
+			case TOKEN_STAR: op = OP_MULVV; break;
+			case TOKEN_SLASH: op = OP_DIVVV; break;
+			case TOKEN_BANG_EQUAL: op = OP_NEQ; break;
+			case TOKEN_EQUAL_EQUAL: op = OP_EQUAL; break;
+			case TOKEN_GREATER: op = OP_GREATER; break;
+			case TOKEN_GREATER_EQUAL: op = OP_GEQ; break;
+			case TOKEN_LESS: op = OP_LESS; break;
+			case TOKEN_LESS_EQUAL: op = OP_LEQ; break;
+			case TOKEN_AND: op = OP_AND; break;
+			case TOKEN_OR: op = OP_OR; break;
+			case TOKEN_EQUAL:
+				if(getRule(operatorType) <= precedence)
+					return;
+				advance(p);
+				assign(p, e);
+				return;
+			default: return;
+		}
+
+		Precedence rule = getRule(operatorType);
+		if(rule <= precedence)
+			return;
+
 		advance(p);
-		ParseFn infixRule = getRule(p->previous.type)->infix;
-		infixRule(p, e);
-	}
+		emit_binop_left(p, op, e);
 
-	/*
-	// This is supposed to catch errors. Do we still need this?
-	if((e->type == NONRELOC_EXTYPE) && e->u.r.assignable && match(p, TOKEN_EQUAL)) {
-		errorAtPrevious(p, "Invalid assignment target.");
-		parsePrecedence(p, e, PREC_ASSIGNMENT);
+		expressionDescription e2;
+		binary(p, &e2, (Precedence)(rule));
+
+		emit_binop(p, op, e, &e2);
 	}
-	*/
 }
 
 static void parseVariable(Parser *p, expressionDescription *e, const char *errorMessage) {
@@ -1163,27 +1182,12 @@ static void parseVariable(Parser *p, expressionDescription *e, const char *error
 
 static void expression(Parser *p, expressionDescription *e) {
 	PRINT_FUNCTION;
-	parsePrecedence(p, e, PREC_ASSIGNMENT);
-}
+	PRINT_TOKEN;
+	binary(p, e, PREC_ASSIGNMENT);
+	if(match(p, TOKEN_EQUAL))
+		assign(p, e);
 
-static void varDeclaration(Parser *p) {
-	PRINT_FUNCTION;
-	expressionDescription v;
-	parseVariable(p, &v, "Expect variable name.");
-	printExpr(stderr, &v);
-#ifdef DEBUG_PARSER
-	fprintf(stderr, "nextReg = %d\n", p->currentCompiler->nextReg);
-#endif /* DEBUG_PARSER */
-	expressionDescription e;
-	if(match(p, TOKEN_EQUAL)) {
-		expression(p, &e);
-	} else {
-		exprInit(&e, NIL_EXTYPE, 0);
-	}
-	consume(p, TOKEN_SEMICOLON, "Expect ';' after variable declaration.");
-
-	assign_adjust(p, &e);
-	emitDefine(p, &v, &e);
+	return;
 }
 
 static void expressionStatement(Parser *p) {
@@ -1207,7 +1211,6 @@ static OP_position expressionCondition(Parser *p) {
 	return e.false_jump;
 }
 
-static void declaration(Parser *p);
 static void statement(Parser *p);
 
 static void ifStatement(Parser *p) {
@@ -1286,44 +1289,7 @@ static void synchronize(Parser *p) {
 	}
 }
 
-static void forStatement(Parser *p) {
-	consume(p, TOKEN_LEFT_PAREN, "Expect '(' after 'for'.");
-
-	beginScope(p->currentCompiler);
-	if(match(p, TOKEN_SEMICOLON)) {
-		// no initializer.
-	} else if(match(p, TOKEN_VAR)) {
-		varDeclaration(p);
-	} else {
-		expressionStatement(p);
-	}
-	OP_position start = p->currentCompiler->last_target = currentChunk(p->currentCompiler)->count;
-
-	OP_position exit_condition = NO_JUMP;
-	if(p->panicMode) {
-		synchronize(p);
-	} else if(!match(p, TOKEN_SEMICOLON)) {
-		exit_condition = expressionCondition(p);
-		consume(p, TOKEN_SEMICOLON, "Expected ';' after loop condition.");
-	}
-
-	if(!match(p, TOKEN_RIGHT_PAREN)) {
-		OP_position bodyJump = emit_jump(p);
-
-		OP_position incrementStart = currentChunk(p->currentCompiler)->count;
-		expressionDescription e;
-		expression(p, &e);
-		consume(p, TOKEN_RIGHT_PAREN, "Expect ')' after for clause.");
-
-		jump_patch(p, emit_jump(p), start);
-		start = incrementStart;
-		jump_patch(p, bodyJump, currentChunk(p->currentCompiler)->count);
-	}
-	statement(p);
-	endScope(p);
-	jump_patch(p, emit_jump(p), start);
-	jump_to_here(p, exit_condition);
-}
+static void declaration(Parser *p);
 
 static void block(Parser *p) {
 	PRINT_FUNCTION;
@@ -1366,17 +1332,6 @@ static void function(Parser *p, expressionDescription *e, FunctionType type) {
 	}
 }
 
-static void funDeclaration(Parser *p) {
-	expressionDescription name, e;
-	parseVariable(p, &name, "Expect function name.");
-	markInitialized(p);
-	function(p, &e, TYPE_FUNCTION);
-	if(!p->hadError) {
-		exprNextReg(p, &e);
-		emitDefine(p, &name, &e);
-	}
-}
-
 static void returnStatement(Parser *p) {
 	if(p->currentCompiler->type == TYPE_SCRIPT)
 		errorAtPrevious(p, "Cannot return from top-level code.");
@@ -1390,16 +1345,86 @@ static void returnStatement(Parser *p) {
 	emitReturn(p, &e);
 }
 
+static void funDeclaration(Parser *p) {
+	expressionDescription name, e;
+	parseVariable(p, &name, "Expect function name.");
+	markInitialized(p);
+	function(p, &e, TYPE_FUNCTION);
+	if(!p->hadError) {
+		exprNextReg(p, &e);
+		emitDefine(p, &name, &e);
+	}
+}
+
+static void varDeclaration(Parser *p) {
+	PRINT_FUNCTION;
+	expressionDescription v;
+	parseVariable(p, &v, "Expect variable name.");
+	printExpr(stderr, &v);
+#ifdef DEBUG_PARSER
+	fprintf(stderr, "nextReg = %d\n", p->currentCompiler->nextReg);
+#endif /* DEBUG_PARSER */
+	expressionDescription e;
+	if(match(p, TOKEN_EQUAL)) {
+		expression(p, &e);
+	} else {
+		exprInit(&e, NIL_EXTYPE, 0);
+	}
+	consume(p, TOKEN_SEMICOLON, "Expect ';' after variable declaration.");
+
+	assign_adjust(p, &e);
+	emitDefine(p, &v, &e);
+}
+
+static void forStatement(Parser *p) {
+	consume(p, TOKEN_LEFT_PAREN, "Expect '(' after 'for'.");
+
+	beginScope(p->currentCompiler);
+	if(match(p, TOKEN_SEMICOLON)) {
+		// no initializer.
+	} else if(match(p, TOKEN_VAR)) {
+		varDeclaration(p);
+	} else {
+		expressionStatement(p);
+	}
+	OP_position start = p->currentCompiler->last_target = currentChunk(p->currentCompiler)->count;
+
+	OP_position exit_condition = NO_JUMP;
+	if(p->panicMode) {
+		synchronize(p);
+	} else if(!match(p, TOKEN_SEMICOLON)) {
+		exit_condition = expressionCondition(p);
+		consume(p, TOKEN_SEMICOLON, "Expected ';' after loop condition.");
+	}
+
+	if(!match(p, TOKEN_RIGHT_PAREN)) {
+		OP_position bodyJump = emit_jump(p);
+
+		OP_position incrementStart = currentChunk(p->currentCompiler)->count;
+		expressionDescription e;
+		expression(p, &e);
+		consume(p, TOKEN_RIGHT_PAREN, "Expect ')' after for clause.");
+
+		jump_patch(p, emit_jump(p), start);
+		start = incrementStart;
+		jump_patch(p, bodyJump, currentChunk(p->currentCompiler)->count);
+	}
+	statement(p);
+	endScope(p);
+	jump_patch(p, emit_jump(p), start);
+	jump_to_here(p, exit_condition);
+}
+
 static void statement(Parser *p) {
 	PRINT_FUNCTION;
-	if(match(p, TOKEN_IF)) {
+	if(match(p, TOKEN_FOR)) {
+		forStatement(p);
+	} else if(match(p, TOKEN_IF)) {
 		ifStatement(p);
 	} else if(match(p, TOKEN_RETURN)) {
 		returnStatement(p);
 	} else if(match(p, TOKEN_WHILE)) {
 		whileStatement(p);
-	} else if(match(p, TOKEN_FOR)) {
-		forStatement(p);
 	} else if(match(p, TOKEN_LEFT_BRACE)) {
 		beginScope(p->currentCompiler);
 		block(p);
