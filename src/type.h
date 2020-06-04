@@ -112,11 +112,6 @@ typedef struct {
 	size_t uvCount;
 } ObjClosure;
 
-typedef struct sObjClass {
-	Obj obj;
-	ObjString *name;
-} ObjClass;
-
 typedef struct {
 	ObjString *key;
 	Value value;
@@ -127,6 +122,12 @@ typedef struct {
 	size_t capacity;
 	Entry *entries;
 } Table;
+
+typedef struct sObjClass {
+	Obj obj;
+	ObjString *name;
+	Table methods;
+} ObjClass;
 
 typedef struct {
 	Obj obj;

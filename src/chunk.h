@@ -33,13 +33,13 @@ typedef enum {
 	OP_MULVV,				// Registers: A,B,C
 	OP_DIVVV,				// Registers: A,B,C
 	OP_JUMP,				// Registers: D
-	OP_COPY_JUMP_IF_FALSE,	// Registers: A, D
+	OP_COPY_JUMP_IF_FALSE,	// Registers: A,D
 	OP_OR = OP_COPY_JUMP_IF_FALSE,	// For parsing
-	OP_COPY_JUMP_IF_TRUE,	// Registers: A, D		// 20
+	OP_COPY_JUMP_IF_TRUE,	// Registers: A,D		// 20
 	OP_AND = OP_COPY_JUMP_IF_TRUE,	// For parsing
 	OP_JUMP_IF_FALSE,		// Registers: D			// 21
 	OP_JUMP_IF_TRUE,		// Registers: D
-	OP_MOV,					// Registers: A, D
+	OP_MOV,					// Registers: A,D
 	OP_CALL,				// Registers: A,B,C
 	OP_GET_UPVAL,			// Registers: A,D		// 25
 	OP_SET_UPVAL,			// Registers: A,D
@@ -48,6 +48,7 @@ typedef enum {
 	OP_CLASS,				// Registers: A,D
 	OP_GET_PROPERTY,		// Registers: A,B,C		// 30
 	OP_SET_PROPERTY,		// Registers: A,B,C
+	OP_METHOD,				// Registers: A,B,C
 } ByteCode;
 
 #define COMMA ,

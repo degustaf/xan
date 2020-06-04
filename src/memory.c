@@ -99,6 +99,7 @@ static void blackenObject(VM *vm, Obj *o) {
 		case OBJ_CLASS: {
 			ObjClass *klass = (ObjClass*)o;
 			markObject(vm, (Obj*)klass->name);
+			markTable(vm, &klass->methods);
 			break;
 		}
 		case OBJ_CLOSURE: {
@@ -165,9 +166,12 @@ static void freeObject(VM *vm, Obj *object) {
 			FREE(ObjInstance, object);
 			break;
 		}
-		case OBJ_CLASS:
+		case OBJ_CLASS: {
+			ObjClass *klass = (ObjClass*)object;
+			freeTable(vm, &klass->methods);
 			FREE(ObjClass, object);
 			break;
+		}
 		case OBJ_NATIVE:
 			FREE(ObjNative, object);
 			break;

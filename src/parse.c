@@ -1373,11 +1373,17 @@ static void function(Parser *p, expressionDescription *e, FunctionType type) {
 	p->vm->temp4GC = NIL_VAL;
 }
 
+static void method(Parser *p) {
+}
+
 static void classDeclaration(Parser *p) {
 	PRINT_FUNCTION;
 	expressionDescription name, e;
 	parseVariable(p, &name, "Expect class name.");
 	consume(p, TOKEN_LEFT_BRACE, "Expect '{' before class body.");
+	while(!check(p, TOKEN_RIGHT_BRACE) && !check(p, TOKEN_EOF)) {
+		method(p);
+	}
 	consume(p, TOKEN_RIGHT_BRACE, "Expect '}' after class body.");
 	printExpr(stderr, &name);
 	exprInit(&e, RELOC_EXTYPE, emit_AD(p, OP_CLASS, p->currentCompiler->actVar, name.type == GLOBAL_EXTYPE ? name.u.s.info : name.u.r.r));
