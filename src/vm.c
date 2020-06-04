@@ -4,6 +4,7 @@
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -362,6 +363,35 @@ OP_JUMP:
 				frame->slots[RA(bytecode)] = OBJ_VAL(klass);
 				break;
 			}
+			case OP_GET_PROPERTY: {
+				Value *v = &frame->slots[RB(bytecode)];
+				if(!IS_INSTANCE(*v)) {
+					runtimeError(vm, "Only instances have properties.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				ObjInstance *instance = AS_INSTANCE(*v);
+				ObjString *name = AS_STRING(frame->slots[RC(bytecode)]);
+				if(!tableGet(&instance->fields, name, &frame->slots[RA(bytecode)])) {
+					runtimeError(vm, "Undefined property '%s'.", name->chars);
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				break;
+			}
+			case OP_SET_PROPERTY: {
+				Value *v = &frame->slots[RB(bytecode)];
+				if(!IS_INSTANCE(*v)) {
+					runtimeError(vm, "Only instances have fields.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				ObjInstance *instance = AS_INSTANCE(*v);
+				assert(IS_STRING(frame->slots[RC(bytecode)]));
+				tableSet(vm, &instance->fields, AS_STRING(frame->slots[RC(bytecode)]), frame->slots[RA(bytecode)]);
+				*v = frame->slots[RA(bytecode)];
+				break;
+			}
+			default:
+				fprintf(stderr, "Unimplemented opcode %d.\n", OP(bytecode));
+				exit(1);
 		}
 	}
 }

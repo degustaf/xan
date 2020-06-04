@@ -47,14 +47,14 @@ typedef enum {
 #undef PRIM_EXTYPE
 	STRING_EXTYPE,		//3
 	NUMBER_EXTYPE,
-	RELOC_EXTYPE,		//5
+	RELOC_EXTYPE,		//5	// u.s.info is instruction number.
 	NONRELOC_EXTYPE,		// u.r.r is result register.
 	GLOBAL_EXTYPE,
 	UPVAL_EXTYPE,			// u.s.info is ????
 	LOCAL_EXTYPE,			// u.r.r is stack register.
 	JUMP_EXTYPE,		//10// u.s.info is instruction number.
-	CALL_EXTYPE,			// u.s.info is instruction number.
-	INDEXED_EXTYPE,			// ????
+	CALL_EXTYPE,			// u.s.info is instruction number, aux is base register.
+	INDEXED_EXTYPE,			// u.r.r is stack register, u.s.aux is key register.
 	VOID_EXTYPE,
 } expressionType;
 
@@ -296,6 +296,10 @@ static inline void exprInit(expressionDescription *e, expressionType type, uint1
 #endif /* DEBUG_EXPRESSION_DESCRIPTION */
 		e->assignable = true;
 	} else {
+#ifdef DEBUG_EXPRESSION_DESCRIPTION
+		e->u.r.r = 0;
+		AS_OBJ(e->u.v) = NULL;
+#endif /* DEBUG_EXPRESSION_DESCRIPTION */
 		e->u.s.info = info;
 	}
 	e->true_jump = e->false_jump = NO_JUMP;
@@ -333,15 +337,16 @@ static void exprDischarge(Parser *p, expressionDescription *e) {
 			e->type = RELOC_EXTYPE;
 			return;
 		case INDEXED_EXTYPE: {
-			Reg r = e->u.s.aux;
-			regFree(p->currentCompiler, r);
-			size_t ins = emit_ABC(p, OP_GET_PROPERTY, 0, e->u.s.info, r);
-			regFree(p->currentCompiler, e->u.s.info);
-			e->u.s.info = ins;
+			Reg rkey = e->u.s.aux;
+			regFree(p->currentCompiler, rkey);
+			uint32_t ins = OP_ABC(OP_GET_PROPERTY, 0, e->u.r.r, rkey);
+			regFree(p->currentCompiler, e->u.r.r);
+			e->u.s.info = emitBytecode(p, ins);
 			e->type = RELOC_EXTYPE;
+			return;
 		}
 		case CALL_EXTYPE:
-			e->u.s.info = e->u.s.aux;
+			e->u.r.r = e->u.s.aux;
 			// intentional fallthrough.
 		case LOCAL_EXTYPE:
 			e->type = NONRELOC_EXTYPE;
@@ -507,7 +512,8 @@ static OP_position emit_branch(Parser *p, expressionDescription *e, bool cond) {
 		regReserve(p->currentCompiler, 1);
 		exprToRegNoBranch(p, e, p->currentCompiler->nextReg-1);
 	}
-	emit_AD(p, cond ? OP_COPY_JUMP_IF_TRUE : OP_COPY_JUMP_IF_FALSE, NO_REG, e->u.s.info);
+	assert(e->type == NONRELOC_EXTYPE);
+	emit_AD(p, cond ? OP_COPY_JUMP_IF_TRUE : OP_COPY_JUMP_IF_FALSE, NO_REG, e->u.r.r);
 	OP_position pc = emit_jump(p);
 	exprFree(p->currentCompiler, e);
 	return pc;
@@ -696,7 +702,6 @@ static void emit_store(Parser *p, expressionDescription *variable, expressionDes
 	if(variable->type == LOCAL_EXTYPE) {
 		exprFree(p->currentCompiler, e);
 		exprToReg(p, e, variable->u.r.r);
-		return;
 	} else if(variable->type == UPVAL_EXTYPE) {
 		expr_toval(p, e);
 		emit_AD(p, OP_SET_UPVAL, variable->u.s.info, exprAnyReg(p, e));
@@ -709,9 +714,15 @@ static void emit_store(Parser *p, expressionDescription *variable, expressionDes
 		Reg rc = variable->u.s.aux;
 		if((e->type == NONRELOC_EXTYPE) && (ra >= p->currentCompiler->actVar) && (rc >= ra))
 			regFree(p->currentCompiler, rc);
-		emit_ABC(p, OP_SET_PROPERTY, ra, variable->u.s.info, rc);
+		emit_ABC(p, OP_SET_PROPERTY, ra, variable->u.r.r, rc);
 		exprFree(p->currentCompiler, e);
+		regFree(p->currentCompiler, variable->u.s.aux);
+		variable->type = NONRELOC_EXTYPE;
+		return;
 	}
+	variable->type = NONRELOC_EXTYPE;
+	assert(e->type == NONRELOC_EXTYPE);
+	variable->u.r.r = e->u.r.r;
 }
 
 typedef void (*ParseFn)(Parser*, expressionDescription*);
@@ -884,7 +895,7 @@ static void expression(Parser *p, expressionDescription *e);
 
 static void assign_adjust(Parser *p, /* uint8_t nVars, uint8_t nExps,*/ expressionDescription *e) {
 	if(e->type == CALL_EXTYPE) {
-		setbc_b(&currentChunk(p->currentCompiler)->code[e->u.r.r], 1);
+		setbc_b(&currentChunk(p->currentCompiler)->code[e->u.s.info], 1);
 	} else {
 		if(e->type != VOID_EXTYPE)
 			exprNextReg(p, e);
@@ -907,8 +918,6 @@ static void assign(Parser *p, expressionDescription *e) {
 		e2.type = NONRELOC_EXTYPE;
 	}
 	emit_store(p, e, &e2);
-	e->type = NONRELOC_EXTYPE;
-	e->u.r.r = e2.type == NONRELOC_EXTYPE ? e2.u.r.r : e2.u.s.info;
 }
 
 #define PRIM_CASE(P) \
@@ -996,7 +1005,6 @@ static void string(Parser *p, expressionDescription *e) {
 	e->u.s.info = 0;
 #endif /* DEBUG_EXPRESSION_DESCRIPTION */
 	e->u.v = OBJ_VAL(copyString(p->previous.start + 1, p->previous.length - 2, p->vm));
-	p->vm->temp4GC = e->u.v;
 	e->true_jump = e->false_jump = NO_JUMP;
 }
 
@@ -1014,7 +1022,9 @@ static void dot(Parser *p, expressionDescription *v) {
 	consume(p, TOKEN_IDENTIFIER, "Expect property name after '.'.");
 	exprAnyReg(p, v);
 	expressionDescription key;
-	string(p, &key);
+	key.type = STRING_EXTYPE;
+	key.u.v = OBJ_VAL(copyString(p->previous.start, p->previous.length, p->vm));
+	key.true_jump = key.false_jump = NO_JUMP;
 	expressionIndexed(p, v, &key);
 }
 
@@ -1089,6 +1099,7 @@ static int var_lookup(Parser *p, Compiler *c, Token *name, expressionDescription
 	} else {
 		p->vm->temp4GC = OBJ_VAL(copyString(name->start, name->length, p->vm));
 		exprInit(e, GLOBAL_EXTYPE, makeConstant(p, p->vm->temp4GC));
+		p->vm->temp4GC = NIL_VAL;
 	}
 	return -1;
 }
@@ -1127,6 +1138,8 @@ static void primaryExpression(Parser *p, expressionDescription *e) {
 	while(true) {
 		if(match(p, TOKEN_LEFT_PAREN)) {
 			call(p, e);
+		} else if(match(p, TOKEN_DOT)) {
+			dot(p, e);
 		} else {
 			break;
 		}
@@ -1201,8 +1214,7 @@ static void parseVariable(Parser *p, expressionDescription *e, const char *error
 	int r = declareVariable(p);
 	if(r < 0) {
 		p->vm->temp4GC = OBJ_VAL(copyString(p->previous.start, p->previous.length, p->vm));
-		exprInit(e, GLOBAL_EXTYPE,
-				makeConstant(p, p->vm->temp4GC));
+		exprInit(e, GLOBAL_EXTYPE, makeConstant(p, p->vm->temp4GC));
 		p->vm->temp4GC = NIL_VAL;
 	} else {
 		exprInit(e, LOCAL_EXTYPE, r);
@@ -1358,6 +1370,7 @@ static void function(Parser *p, expressionDescription *e, FunctionType type) {
 	ObjFunction *f = endCompiler(p);
 	p->vm->temp4GC = OBJ_VAL(f);
 	exprInit(e, RELOC_EXTYPE, emit_AD(p, OP_CLOSURE, p->currentCompiler->actVar, makeConstant(p, OBJ_VAL(f))));
+	p->vm->temp4GC = NIL_VAL;
 }
 
 static void classDeclaration(Parser *p) {
@@ -1367,7 +1380,7 @@ static void classDeclaration(Parser *p) {
 	consume(p, TOKEN_LEFT_BRACE, "Expect '{' before class body.");
 	consume(p, TOKEN_RIGHT_BRACE, "Expect '}' after class body.");
 	printExpr(stderr, &name);
-	exprInit(&e, RELOC_EXTYPE, emit_AD(p, OP_CLASS, p->currentCompiler->actVar, name.u.s.info));
+	exprInit(&e, RELOC_EXTYPE, emit_AD(p, OP_CLASS, p->currentCompiler->actVar, name.type == GLOBAL_EXTYPE ? name.u.s.info : name.u.r.r));
 	exprNextReg(p, &e);
 	emitDefine(p, &name, &e);
 }

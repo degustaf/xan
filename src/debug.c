@@ -180,6 +180,12 @@ void disassembleInstruction(Chunk* chunk, size_t offset) {
 		case OP_CLASS:
 			constantInstruction("OP_CLASS", chunk, bytecode);
 			break;
+		case OP_GET_PROPERTY:
+			InstructionABC("OP_GET_PROPERTY", bytecode);
+			break;
+		case OP_SET_PROPERTY:
+			InstructionABC("OP_SET_PROPERTY", bytecode);
+			break;
 		default:
 			printf("Unknown opcode %d\n", OP(bytecode));
 			return;

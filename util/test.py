@@ -61,24 +61,13 @@ c_interpreter('xan', {
    'test/function/too_many_arguments.xan': 'skip',
    'test/function/too_many_parameters.xan': 'skip',
 
-   # No classes.
-   # 'test/call/object.xan': 'skip',
-   'test/class/local_reference_self.xan': 'skip',
-   'test/class/reference_self.xan': 'skip',
-   'test/constructor': 'skip',
-   'test/field': 'skip',
-   'test/number/decimal_point_at_eof.xan': 'skip',
-   'test/number/trailing_dot.xan': 'skip',
-   'test/operator/not.xan': 'skip',
-   'test/operator/not_class.xan': 'skip',
- 
    # No inheritance.
    'test/class/local_inherit_self.xan': 'skip',
    'test/class/inherit_self.xan': 'skip',
    'test/class/inherited_method.xan': 'skip',
    'test/inheritance': 'skip',
    'test/super': 'skip',
- 
+
    # No methods.
    'test/assignment/to_this.xan': 'skip',
    'test/class/local_reference_self.xan': 'skip',
