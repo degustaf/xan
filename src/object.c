@@ -50,6 +50,13 @@ ObjClosure *newClosure(VM *vm, ObjFunction *f) {
 	return cl;
 }
 
+ObjBoundMethod *newBoundMethod(VM *vm, Value receiver, ObjClosure *method) {
+	ObjBoundMethod *ret = ALLOCATE_OBJ(ObjBoundMethod, OBJ_BOUND_METHOD);
+	ret->receiver = receiver;
+	ret->method = method;
+	return ret;
+}
+
 ObjClass *newClass(VM *vm, ObjString *name) {
 	ObjClass *klass = ALLOCATE_OBJ(ObjClass, OBJ_CLASS);
 	klass->name = name;
@@ -125,11 +132,20 @@ ObjString* copyString(const char *chars, size_t length, VM *vm) {
 
 void fprintObject(FILE *restrict stream, Value value) {
 	switch(OBJ_TYPE(value)) {
-		case OBJ_FUNCTION:
-			fprintFunction(stream, AS_FUNCTION(value));
+		case OBJ_BOUND_METHOD:
+			fprintFunction(stream, AS_BOUND_METHOD(value)->method->f);
+			break;
+		case OBJ_CLASS:
+			fprintf(stream, "%s", AS_CLASS(value)->name->chars);
 			break;
 		case OBJ_CLOSURE:
 			fprintFunction(stream, AS_CLOSURE(value)->f);
+			break;
+		case OBJ_FUNCTION:
+			fprintFunction(stream, AS_FUNCTION(value));
+			break;
+		case OBJ_INSTANCE:
+			fprintf(stream, "%s instance", AS_INSTANCE(value)->klass->name->chars);
 			break;
 		case OBJ_NATIVE:
 			fprintf(stream, "<native fn>");
@@ -139,12 +155,6 @@ void fprintObject(FILE *restrict stream, Value value) {
 			break;
 		case OBJ_UPVALUE:
 			fprintf(stream, "upvalue");
-			break;
-		case OBJ_CLASS:
-			fprintf(stream, "%s", AS_CLASS(value)->name->chars);
-			break;
-		case OBJ_INSTANCE:
-			fprintf(stream, "%s instance", AS_INSTANCE(value)->klass->name->chars);
 			break;
 	}
 }

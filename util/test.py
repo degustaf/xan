@@ -60,6 +60,8 @@ c_interpreter('xan', {
    'test/limit/too_many_constants.xan': 'skip',
    'test/function/too_many_arguments.xan': 'skip',
    'test/function/too_many_parameters.xan': 'skip',
+   'test/method/too_many_arguments.xan': 'skip',
+   'test/method/too_many_parameters.xan': 'skip',
 
    # No inheritance.
    'test/class/local_inherit_self.xan': 'skip',
@@ -68,21 +70,15 @@ c_interpreter('xan', {
    'test/inheritance': 'skip',
    'test/super': 'skip',
 
-   # No methods.
+   # No this or initializer.
    'test/assignment/to_this.xan': 'skip',
-   'test/class/local_reference_self.xan': 'skip',
    'test/class/reference_self.xan': 'skip',
    'test/closure/close_over_method_parameter.xan': 'skip',
    'test/constructor': 'skip',
    'test/field/get_and_set_method.xan': 'skip',
-   'test/field/method.xan': 'skip',
    'test/field/method_binds_this.xan': 'skip',
-   'test/method': 'skip',
-   'test/operator/equals_class.xan': 'skip',
    'test/operator/equals_method.xan': 'skip',
-   'test/return/in_method.xan': 'skip',
    'test/this': 'skip',
-   'test/variable/local_from_method.xan': 'skip',
 })
 
 # TODO: Other chapters.
@@ -284,7 +280,7 @@ c_interpreter('xan', {
 #   # These are just for earlier chapters.
 #   'test/scanning': 'skip',
 #   'test/expressions': 'skip',
-
+#
 #   # No closures.
 #   'test/closure': 'skip',
 #   'test/for/closure_in_body.xan': 'skip',
@@ -294,7 +290,7 @@ c_interpreter('xan', {
 #   'test/regression/40.xan': 'skip',
 #   'test/while/closure_in_body.xan': 'skip',
 #   'test/while/return_closure.xan': 'skip',
-
+#
 #   # No classes.
 #   'test/assignment/to_this.xan': 'skip',
 #   'test/call/object.xan': 'skip',
@@ -370,7 +366,7 @@ c_interpreter('xan', {
 #   'test/this': 'skip',
 #   'test/variable/local_from_method.xan': 'skip',
 # })
-# 
+
 # c_interpreter('chap27_classes', {
 #   'test': 'pass',
 # 
@@ -401,7 +397,7 @@ c_interpreter('xan', {
 #   'test/this': 'skip',
 #   'test/variable/local_from_method.xan': 'skip',
 # })
-# 
+
 # c_interpreter('chap28_methods', {
 #   'test': 'pass',
 # 

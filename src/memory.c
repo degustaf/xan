@@ -96,6 +96,11 @@ static void blackenObject(VM *vm, Obj *o) {
 	printf("\n");
 #endif /* DEBUG_LOG_GC */
 	switch(o->type) {
+		case OBJ_BOUND_METHOD: {
+			ObjBoundMethod *bound = (ObjBoundMethod*)o;
+			markValue(vm, bound->receiver);
+			markObject(vm, (Obj*)bound->method);
+		}
 		case OBJ_CLASS: {
 			ObjClass *klass = (ObjClass*)o;
 			markObject(vm, (Obj*)klass->name);

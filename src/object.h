@@ -7,25 +7,28 @@
 #include "chunk.h"
 #include "value.h"
 
-#define OBJ_TYPE(value)    (AS_OBJ(value)->type)
-#define IS_FUNCTION(value) isObjType(value, OBJ_FUNCTION)
-#define IS_CLOSURE(value)  isObjType(value, OBJ_CLOSURE)
-#define IS_NATIVE(value)   isObjType(value, OBJ_NATIVE)
-#define IS_STRING(value)   isObjType(value, OBJ_STRING)
-#define IS_CLASS(value)    isObjType(value, OBJ_CLASS)
-#define IS_INSTANCE(value) isObjType(value, OBJ_INSTANCE)
+#define OBJ_TYPE(value)        (AS_OBJ(value)->type)
+#define IS_FUNCTION(value)     isObjType(value, OBJ_FUNCTION)
+#define IS_CLOSURE(value)      isObjType(value, OBJ_CLOSURE)
+#define IS_NATIVE(value)       isObjType(value, OBJ_NATIVE)
+#define IS_STRING(value)       isObjType(value, OBJ_STRING)
+#define IS_CLASS(value)        isObjType(value, OBJ_CLASS)
+#define IS_INSTANCE(value)     isObjType(value, OBJ_INSTANCE)
+#define IS_BOUND_METHOD(value) isObjType(value, OBJ_BOUND_METHOD)
 
-#define AS_FUNCTION(value) ((ObjFunction*)AS_OBJ(value))
-#define AS_CLOSURE(value)  ((ObjClosure*)AS_OBJ(value))
-#define AS_NATIVE(value)   (((ObjNative*)AS_OBJ(value))->function)
-#define AS_STRING(value)   ((ObjString*)AS_OBJ(value))
-#define AS_CSTRING(value)  (AS_STRING(value)->chars)
-#define AS_CLASS(value)    ((ObjClass*)AS_OBJ(value))
-#define AS_INSTANCE(value) ((ObjInstance*)AS_OBJ(value))
+#define AS_FUNCTION(value)     ((ObjFunction*)AS_OBJ(value))
+#define AS_CLOSURE(value)      ((ObjClosure*)AS_OBJ(value))
+#define AS_NATIVE(value)       (((ObjNative*)AS_OBJ(value))->function)
+#define AS_STRING(value)       ((ObjString*)AS_OBJ(value))
+#define AS_CSTRING(value)      (AS_STRING(value)->chars)
+#define AS_CLASS(value)        ((ObjClass*)AS_OBJ(value))
+#define AS_INSTANCE(value)     ((ObjInstance*)AS_OBJ(value))
+#define AS_BOUND_METHOD(value) ((ObjBoundMethod*)AS_OBJ(value))
 
 ObjFunction *newFunction(VM *vm, size_t uvCount);
 ObjUpvalue *newUpvalue(VM *vm, Value *slot);
 ObjClosure *newClosure(VM *vm, ObjFunction *f);
+ObjBoundMethod *newBoundMethod(VM *vm, Value receiver, ObjClosure *method);
 ObjClass *newClass(VM *vm, ObjString *name);
 ObjInstance *newInstance(VM *vm, ObjClass *klass);
 ObjNative *newNative(VM *vm, NativeFn function);

@@ -18,7 +18,8 @@
 	X(CLOSURE), \
 	X(UPVALUE), \
 	X(CLASS), \
-	X(INSTANCE),
+	X(INSTANCE), \
+	X(BOUND_METHOD),
 
 typedef enum {
 #define ENUM_BUILDER(x) OBJ_##x
@@ -134,6 +135,12 @@ typedef struct {
 	ObjClass *klass;
 	Table fields;
 } ObjInstance;
+
+typedef struct {
+	Obj obj;
+	Value receiver;
+	ObjClosure *method;
+} ObjBoundMethod;
 
 typedef struct {
 	Token name;

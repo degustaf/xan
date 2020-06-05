@@ -143,6 +143,10 @@ static bool call(VM *vm, ObjClosure *function, Value *base, Reg argCount, Reg re
 static bool callValue(VM *vm, Value *callee, Reg retCount, Reg argCount) {
 	if(IS_OBJ(*callee)) {
 		switch(OBJ_TYPE(*callee)) {
+			case OBJ_BOUND_METHOD: {
+				ObjBoundMethod *bound = AS_BOUND_METHOD(*callee);
+				return call(vm, bound->method, callee, argCount, retCount);
+			}
 			case OBJ_CLASS: {
 				ObjClass *klass = AS_CLASS(*callee);
 				*callee = OBJ_VAL(newInstance(vm, klass));
@@ -163,6 +167,18 @@ static bool callValue(VM *vm, Value *callee, Reg retCount, Reg argCount) {
 
 	runtimeError(vm, "Can only call functions and classes.");
 	return false;
+}
+
+static bool bindMethod(VM *vm, ObjInstance *instance, ObjString *name, Value *slot) {
+	Value method;
+	if(!tableGet(&instance->klass->methods, name, &method)) {
+		runtimeError(vm, "Undefined property '%s'.", name->chars);
+		return false;
+	}
+
+	ObjBoundMethod *bound = newBoundMethod(vm, OBJ_VAL(instance), AS_CLOSURE(method));
+	*slot = (OBJ_VAL(bound));
+	return true;
 }
 
 static ObjUpvalue *captureUpvalue(VM *vm, Value *local) {
@@ -187,6 +203,14 @@ static void closeUpvalues(VM *vm, Value *last) {
 		uv->location = &uv->closed;
 		vm->openUpvalues = uv->next;
 	}
+}
+
+static void defineMethod(VM *vm, Value ra, Value rb, Value rc) {
+	assert(IS_CLASS(ra));
+	assert(IS_STRING(rb));
+	ObjClass *klass = AS_CLASS(ra);
+	ObjString *name = AS_STRING(rb);
+	tableSet(vm, &klass->methods, name, rc);
 }
 
 #define READ_BYTECODE() (*frame->ip++)
@@ -371,11 +395,12 @@ OP_JUMP:
 				}
 				ObjInstance *instance = AS_INSTANCE(*v);
 				ObjString *name = AS_STRING(frame->slots[RC(bytecode)]);
-				if(!tableGet(&instance->fields, name, &frame->slots[RA(bytecode)])) {
-					runtimeError(vm, "Undefined property '%s'.", name->chars);
-					return INTERPRET_RUNTIME_ERROR;
+				if(tableGet(&instance->fields, name, &frame->slots[RA(bytecode)])) {
+					break;
+				} else if(bindMethod(vm, instance, name, &frame->slots[RA(bytecode)])) {
+					break;
 				}
-				break;
+				return INTERPRET_RUNTIME_ERROR;
 			}
 			case OP_SET_PROPERTY: {
 				Value *v = &frame->slots[RB(bytecode)];
@@ -389,6 +414,9 @@ OP_JUMP:
 				*v = frame->slots[RA(bytecode)];
 				break;
 			}
+			case OP_METHOD:
+				defineMethod(vm, frame->slots[RA(bytecode)], frame->slots[RB(bytecode)], frame->slots[RC(bytecode)]);
+				break;
 			default:
 				fprintf(stderr, "Unimplemented opcode %d.\n", OP(bytecode));
 				exit(1);

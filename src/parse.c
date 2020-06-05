@@ -49,8 +49,8 @@ typedef enum {
 	NUMBER_EXTYPE,
 	RELOC_EXTYPE,		//5	// u.s.info is instruction number.
 	NONRELOC_EXTYPE,		// u.r.r is result register.
-	GLOBAL_EXTYPE,
-	UPVAL_EXTYPE,			// u.s.info is ????
+	GLOBAL_EXTYPE,			// u.s.info is index in constants.
+	UPVAL_EXTYPE,			// u.s.info is index in upvalues.
 	LOCAL_EXTYPE,			// u.r.r is stack register.
 	JUMP_EXTYPE,		//10// u.s.info is instruction number.
 	CALL_EXTYPE,			// u.s.info is instruction number, aux is base register.
@@ -997,15 +997,20 @@ static void number(Parser *p, expressionDescription *e) {
 	e->true_jump = e->false_jump = NO_JUMP;
 }
 
-static void string(Parser *p, expressionDescription *e) {
+static void makeStringConstant(Parser *p, expressionDescription *e, const char *s, size_t length) {
 	PRINT_FUNCTION;
 	e->type = STRING_EXTYPE;
 #ifdef DEBUG_EXPRESSION_DESCRIPTION
 	e->u.r.r = 0;
 	e->u.s.info = 0;
 #endif /* DEBUG_EXPRESSION_DESCRIPTION */
-	e->u.v = OBJ_VAL(copyString(p->previous.start + 1, p->previous.length - 2, p->vm));
+	e->u.v = OBJ_VAL(copyString(s, length, p->vm));
 	e->true_jump = e->false_jump = NO_JUMP;
+}
+
+static void string(Parser *p, expressionDescription *e) {
+	PRINT_FUNCTION;
+	makeStringConstant(p, e, p->previous.start + 1, p->previous.length - 2);
 }
 
 static void primaryExpression(Parser *p, expressionDescription *e);
@@ -1022,9 +1027,7 @@ static void dot(Parser *p, expressionDescription *v) {
 	consume(p, TOKEN_IDENTIFIER, "Expect property name after '.'.");
 	exprAnyReg(p, v);
 	expressionDescription key;
-	key.type = STRING_EXTYPE;
-	key.u.v = OBJ_VAL(copyString(p->previous.start, p->previous.length, p->vm));
-	key.true_jump = key.false_jump = NO_JUMP;
+	makeStringConstant(p, &key, p->previous.start, p->previous.length);
 	expressionIndexed(p, v, &key);
 }
 
@@ -1341,6 +1344,7 @@ static void block(Parser *p) {
 }
 
 static void function(Parser *p, expressionDescription *e, FunctionType type) {
+	PRINT_FUNCTION;
 	Compiler c;
 	p->vm->currentCompiler = p->currentCompiler = initCompiler(p, &c, type);
 	beginScope(&c);
@@ -1373,22 +1377,40 @@ static void function(Parser *p, expressionDescription *e, FunctionType type) {
 	p->vm->temp4GC = NIL_VAL;
 }
 
-static void method(Parser *p) {
+static void method(Parser *p, expressionDescription *klass) {
+	PRINT_FUNCTION;
+	assert(klass->type == NONRELOC_EXTYPE);
+	expressionDescription name, m;
+
+	consume(p, TOKEN_IDENTIFIER, "Expect method name.");
+	makeStringConstant(p, &name, p->previous.start, p->previous.length);
+	printExpr(stderr, &name);
+	function(p, &m, TYPE_FUNCTION);
+	exprNextReg(p, &name);
+	exprNextReg(p, &m);
+	emit_ABC(p, OP_METHOD, klass->u.r.r, name.u.r.r, m.u.r.r);
+	exprFree(p->currentCompiler, &m);
+	exprFree(p->currentCompiler, &name);
 }
 
 static void classDeclaration(Parser *p) {
 	PRINT_FUNCTION;
-	expressionDescription name, e;
+	expressionDescription name, klass;
 	parseVariable(p, &name, "Expect class name.");
+	Token nameToken = p->previous;
 	consume(p, TOKEN_LEFT_BRACE, "Expect '{' before class body.");
-	while(!check(p, TOKEN_RIGHT_BRACE) && !check(p, TOKEN_EOF)) {
-		method(p);
-	}
-	consume(p, TOKEN_RIGHT_BRACE, "Expect '}' after class body.");
 	printExpr(stderr, &name);
-	exprInit(&e, RELOC_EXTYPE, emit_AD(p, OP_CLASS, p->currentCompiler->actVar, name.type == GLOBAL_EXTYPE ? name.u.s.info : name.u.r.r));
-	exprNextReg(p, &e);
-	emitDefine(p, &name, &e);
+	exprInit(&klass, RELOC_EXTYPE, emit_AD(p, OP_CLASS, p->currentCompiler->actVar, name.type == GLOBAL_EXTYPE ? name.u.s.info : name.u.r.r));
+	exprNextReg(p, &klass);
+	emitDefine(p, &name, &klass);
+	var_lookup(p, p->currentCompiler, &nameToken, &klass, true);
+	exprNextReg(p, &klass);
+	beginScope(p->currentCompiler);
+	while(!check(p, TOKEN_RIGHT_BRACE) && !check(p, TOKEN_EOF)) {
+		method(p, &klass);
+	}
+	endScope(p);
+	consume(p, TOKEN_RIGHT_BRACE, "Expect '}' after class body.");
 }
 
 static void returnStatement(Parser *p) {
