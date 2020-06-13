@@ -2,6 +2,8 @@
 
 #include <stdio.h>
 
+#include "object.h"
+
 /*
 static void simpleInstruction(const char *name) {
 	printf("%s\n", name);
@@ -225,4 +227,28 @@ void dumpStack(VM *vm, size_t count) {
 	dumpValueArray(vm->stack, vm->stackLast, count);
 	printf("frame = ");
 	dumpValueArray(vm->frames[vm->frameCount - 1].slots, vm->stackLast, count);
+}
+
+void dumpOpenUpvalues(VM *vm) {
+	printf("Open upvalues = {");
+	for(ObjUpvalue **uv = &vm->openUpvalues; *uv != NULL; uv = &(*uv)->next) {
+		printf("%p:", (void*)(*uv)->location);
+		printObject(*(*uv)->location);
+		printf(", ");
+	}
+	printf("}\n");
+}
+
+void dumpClosedUpvalues(ObjClosure *c) {
+	if(c) {
+		printf("Closed upvalues(%ld) = {", c->uvCount);
+		fflush(stdout);
+		for(size_t i = 0; i<c->uvCount; i++) {
+			printObject(*c->upvalues[i]->location);
+			printf(", ");
+		}
+		printf("}\n");
+	} else {
+		printf("closure = NULL.\n");
+	}
 }

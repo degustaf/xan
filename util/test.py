@@ -68,17 +68,8 @@ c_interpreter('xan', {
    'test/class/inherit_self.xan': 'skip',
    'test/class/inherited_method.xan': 'skip',
    'test/inheritance': 'skip',
+   'test/regression/394.xan': 'skip',
    'test/super': 'skip',
-
-   # No this or initializer.
-   'test/assignment/to_this.xan': 'skip',
-   'test/class/reference_self.xan': 'skip',
-   'test/closure/close_over_method_parameter.xan': 'skip',
-   'test/constructor': 'skip',
-   'test/field/get_and_set_method.xan': 'skip',
-   'test/field/method_binds_this.xan': 'skip',
-   'test/operator/equals_method.xan': 'skip',
-   'test/this': 'skip',
 })
 
 # TODO: Other chapters.

@@ -69,6 +69,7 @@ void initVM(VM *vm) {
 	initTable(&vm->strings);
 	initTable(&vm->globals);
 
+	vm->initString = NULL;
 	vm->stackSize = BASE_STACK_SIZE;
 	vm->stack = NULL;
 	vm->stackLast = NULL;
@@ -78,6 +79,7 @@ void initVM(VM *vm) {
 	for(size_t i = 0; i <vm->stackSize; i++)
 		vm->stack[i] = NIL_VAL;
 	resetStack(vm);
+	vm->initString = copyString("init", 4, vm);
 
 	vm->stackTop = vm->stack + 2;
 	defineNative(vm, 0, "clock", clockNative);
@@ -90,6 +92,7 @@ void freeVM(VM *vm) {
 	vm->stackTop = vm->stackLast = NULL;
 	freeTable(vm, &vm->strings);
 	freeTable(vm, &vm->globals);
+	vm->initString = NULL;
 	freeObjects(vm);
 }
 
@@ -145,11 +148,19 @@ static bool callValue(VM *vm, Value *callee, Reg retCount, Reg argCount) {
 		switch(OBJ_TYPE(*callee)) {
 			case OBJ_BOUND_METHOD: {
 				ObjBoundMethod *bound = AS_BOUND_METHOD(*callee);
+				*callee = bound->receiver;
 				return call(vm, bound->method, callee, argCount, retCount);
 			}
 			case OBJ_CLASS: {
 				ObjClass *klass = AS_CLASS(*callee);
 				*callee = OBJ_VAL(newInstance(vm, klass));
+				Value initializer;
+				if(tableGet(&klass->methods, vm->initString, &initializer)) {
+					return call(vm, AS_CLOSURE(initializer), callee, argCount, retCount);
+				} else if(argCount) {
+					runtimeError(vm, "Expected 0 arguments but got %d.", argCount);
+					return false;
+				}
 				return true;
 			}
 			case OBJ_CLOSURE:
@@ -179,6 +190,24 @@ static bool bindMethod(VM *vm, ObjInstance *instance, ObjString *name, Value *sl
 	ObjBoundMethod *bound = newBoundMethod(vm, OBJ_VAL(instance), AS_CLOSURE(method));
 	*slot = (OBJ_VAL(bound));
 	return true;
+}
+
+static bool invokeMethod(VM *vm, Value *slot, ObjString *name, Reg retCount, Reg argCount) {
+	Value method;
+	if(!IS_INSTANCE(*slot)) {
+		runtimeError(vm, "Only instances have properties.");
+		return false;
+	}
+	ObjInstance *instance = AS_INSTANCE(*slot);
+	if(!tableGet(&instance->klass->methods, name, &method)) {
+		runtimeError(vm, "Undefined property '%s'.", name->chars);
+		return false;
+	}
+
+	ObjBoundMethod *bound = newBoundMethod(vm, OBJ_VAL(instance), AS_CLOSURE(method));
+	*slot = (OBJ_VAL(bound));
+	*slot = bound->receiver;
+	return call(vm, bound->method, slot, argCount, retCount);
 }
 
 static ObjUpvalue *captureUpvalue(VM *vm, Value *local) {
@@ -231,6 +260,10 @@ static InterpretResult run(VM *vm) {
 #ifdef DEBUG_STACK_USAGE
 		dumpStack(vm, 5);
 #endif /* DEBUG_STACK_USAGE */
+#ifdef DEBUG_UPVALUE_USAGE
+		dumpOpenUpvalues(vm);
+		dumpClosedUpvalues(frame->c);
+#endif /* DEBUG_UPVALUE_USAGE */
 #ifdef DEBUG_TRACE_EXECUTION
 		disassembleInstruction(&frame->c->f->chunk, frame->ip - frame->c->f->chunk.code);
 #endif
@@ -318,8 +351,10 @@ static InterpretResult run(VM *vm) {
 					return INTERPRET_OK;
 
 				// uint16_t d = RD(bytecode);
-				frame->slots[-1] = frame->slots[RA(bytecode)];
-				closeUpvalues(vm, frame->slots);
+				int16_t ra = ((int16_t)(Reg)(RA(bytecode) + 1))-1;
+				closeUpvalues(vm, frame->slots - 1);
+				// ensure we close this in slots[-1] as an upvalue before moving return value.
+				frame->slots[-1] = frame->slots[ra];
 				vm->frameCount--;
 
 				frame = &vm->frames[vm->frameCount - 1];
@@ -352,7 +387,7 @@ OP_JUMP:
 				frame->ip++;
 				break;
 			case OP_MOV:
-				frame->slots[RA(bytecode)] = frame->slots[RD(bytecode)];
+				frame->slots[RA(bytecode)] = frame->slots[(int16_t)RD(bytecode)];
 				break;
 			case OP_CALL:
 				if(!callValue(vm, &frame->slots[RA(bytecode)], RB(bytecode), RC(bytecode)))
@@ -373,9 +408,9 @@ OP_JUMP:
 				frame->slots[RA(bytecode)] = OBJ_VAL(cl);	// Can be found by GC
 				for(size_t i=0; i<f->uvCount; i++) {
 					if((f->uv[i] & UV_IS_LOCAL) == UV_IS_LOCAL)
-						cl->upvalues[i] = captureUpvalue(vm, frame->slots + (f->uv[i] & 0xff));
+						cl->upvalues[i] = captureUpvalue(vm, frame->slots + (f->uv[i] & 0xff) - 1);
 					else
-						cl->upvalues[i] = frame->c->upvalues[f->uv[i] & 0xff];
+						cl->upvalues[i] = frame->c->upvalues[(f->uv[i] & 0xff)-1];
 				}
 				break;
 			}
@@ -388,12 +423,13 @@ OP_JUMP:
 				break;
 			}
 			case OP_GET_PROPERTY: {
-				Value *v = &frame->slots[RB(bytecode)];
-				if(!IS_INSTANCE(*v)) {
+				int16_t rb = ((int16_t)(Reg)(RB(bytecode) + 1))-1;
+				Value v = frame->slots[rb];
+				if(!IS_INSTANCE(v)) {
 					runtimeError(vm, "Only instances have properties.");
 					return INTERPRET_RUNTIME_ERROR;
 				}
-				ObjInstance *instance = AS_INSTANCE(*v);
+				ObjInstance *instance = AS_INSTANCE(v);
 				ObjString *name = AS_STRING(frame->slots[RC(bytecode)]);
 				if(tableGet(&instance->fields, name, &frame->slots[RA(bytecode)])) {
 					break;
@@ -403,20 +439,28 @@ OP_JUMP:
 				return INTERPRET_RUNTIME_ERROR;
 			}
 			case OP_SET_PROPERTY: {
-				Value *v = &frame->slots[RB(bytecode)];
-				if(!IS_INSTANCE(*v)) {
+				int16_t rb = ((int16_t)(Reg)(RB(bytecode) + 1))-1;
+				Value v = frame->slots[rb];
+				if(!IS_INSTANCE(v)) {
 					runtimeError(vm, "Only instances have fields.");
 					return INTERPRET_RUNTIME_ERROR;
 				}
-				ObjInstance *instance = AS_INSTANCE(*v);
+				ObjInstance *instance = AS_INSTANCE(v);
 				assert(IS_STRING(frame->slots[RC(bytecode)]));
 				tableSet(vm, &instance->fields, AS_STRING(frame->slots[RC(bytecode)]), frame->slots[RA(bytecode)]);
-				*v = frame->slots[RA(bytecode)];
 				break;
 			}
 			case OP_METHOD:
 				defineMethod(vm, frame->slots[RA(bytecode)], frame->slots[RB(bytecode)], frame->slots[RC(bytecode)]);
 				break;
+			/*
+			case OP_INVOKE: {
+				ObjString *name = AS_STRING(frame->slots[RN(bytecode)]);
+				if(invokeMethod(vm, &frame->slots[RM(bytecode)], name, RO(bytecode), RP(bytecode)))
+					break;
+				return INTERPRET_RUNTIME_ERROR;
+			}
+			*/
 			default:
 				fprintf(stderr, "Unimplemented opcode %d.\n", OP(bytecode));
 				exit(1);

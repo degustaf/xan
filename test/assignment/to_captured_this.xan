@@ -1,0 +1,10 @@
+class Foo {
+  Foo() {
+    fun f() {
+      this = "value"; // Error at '=': Invalid assignment target.
+    }
+    return f;
+  }
+}
+
+Foo();

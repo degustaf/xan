@@ -1,0 +1,15 @@
+class Foo {
+  bar() {
+    print(this.baz = "baz"); // expect: baz
+    print(this); // expect: Foo instance
+  }
+}
+
+Foo().bar();
+
+fun f(a,b) {
+  print(a); // expect: bah
+  print(b); // expect: 2
+}
+
+f(Foo().bah = "bah", 2);

@@ -150,6 +150,8 @@ typedef struct {
 
 typedef enum {
 	TYPE_FUNCTION,
+	TYPE_INITIALIZER,
+	TYPE_METHOD,
 	TYPE_SCRIPT,
 } FunctionType;
 
@@ -177,7 +179,7 @@ typedef struct {
 	Value *slots;
 } CallFrame;
 
-typedef struct sVM {
+typedef struct {
 	CallFrame frames[FRAMES_MAX];
 	size_t frameCount;
 	Value *stack;
@@ -187,6 +189,7 @@ typedef struct sVM {
 
 	Table strings;
 	Table globals;
+	ObjString *initString;
 	ObjUpvalue *openUpvalues;
 	Obj *objects;
 	Compiler *currentCompiler;
@@ -203,7 +206,5 @@ typedef enum {
 	INTERPRET_COMPILE_ERROR,
 	INTERPRET_RUNTIME_ERROR,
 } InterpretResult;
-
-// typedef struct sVM VM;
 
 #endif /* XAN_TYPE_H */

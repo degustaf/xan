@@ -49,6 +49,7 @@ typedef enum {
 	OP_GET_PROPERTY,		// Registers: A,B,C		// 30
 	OP_SET_PROPERTY,		// Registers: A,B,C
 	OP_METHOD,				// Registers: A,B,C
+	// OP_INVOKE,			// Registers: M,N,O,P
 } ByteCode;
 
 #define COMMA ,
@@ -90,6 +91,11 @@ static inline Value getPrimitive(primitive p) {
 #define RJump(x) ((ptrdiff_t)RD(x)-JUMP_BIAS)
 #define RB(x) ((Reg)(MAX_REG & RD(x)))
 #define RC(x) ((Reg)(RD(x) >> 8))
+
+#define RM(x) (Reg)(0x3f & (((uint32_t)(x)) >>  8))
+#define RN(x) (Reg)(0x3f & (((uint32_t)(x)) >> 14))
+#define RO(x) (Reg)(0x3f & (((uint32_t)(x)) >> 20))
+#define RP(x) (Reg)(0x3f & (((uint32_t)(x)) >> 26))
 
 static inline void setbc(uint32_t *p, uint8_t x, uint8_t ofs) {
 	((uint8_t*)(p))[ENDIAN_SELECT(ofs, 3-ofs)] = x;

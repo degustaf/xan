@@ -1,0 +1,2 @@
+binary_trees.xan: 6.37843
+trees.xan: 15.1724

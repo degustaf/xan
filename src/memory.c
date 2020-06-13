@@ -78,6 +78,7 @@ static void markRoots(VM *vm) {
 		markValue(vm, *slot);
 	}
 	markValue(vm, vm->temp4GC);
+	markObject(vm, (Obj*)vm->initString);
 
 	for(size_t i=0; i<vm->frameCount; i++)
 		markObject(vm, (Obj*)vm->frames[i].c);
@@ -100,6 +101,7 @@ static void blackenObject(VM *vm, Obj *o) {
 			ObjBoundMethod *bound = (ObjBoundMethod*)o;
 			markValue(vm, bound->receiver);
 			markObject(vm, (Obj*)bound->method);
+			break;
 		}
 		case OBJ_CLASS: {
 			ObjClass *klass = (ObjClass*)o;
@@ -147,6 +149,9 @@ static void freeObject(VM *vm, Obj *object) {
 	printf("%p free type %s\n", (void*)object, ObjTypeNames[object->type]);
 #endif /* DEBUG_LOG_GC */
 	switch(object->type) {
+		case OBJ_BOUND_METHOD:
+			FREE(ObjBoundMethod, object);
+			break;
 		case OBJ_FUNCTION: {
 			ObjFunction *f = (ObjFunction*)object;
 			freeChunk(vm, &f->chunk);

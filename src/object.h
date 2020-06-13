@@ -30,6 +30,7 @@ ObjUpvalue *newUpvalue(VM *vm, Value *slot);
 ObjClosure *newClosure(VM *vm, ObjFunction *f);
 ObjBoundMethod *newBoundMethod(VM *vm, Value receiver, ObjClosure *method);
 ObjClass *newClass(VM *vm, ObjString *name);
+ObjClass *copyClass(VM *vm, ObjClass *klass);
 ObjInstance *newInstance(VM *vm, ObjClass *klass);
 ObjNative *newNative(VM *vm, NativeFn function);
 ObjString *takeString(char *chars, size_t length, VM *vm);
