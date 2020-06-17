@@ -180,9 +180,10 @@ static bool callValue(VM *vm, Value *callee, Reg retCount, Reg argCount) {
 	return false;
 }
 
-static bool bindMethod(VM *vm, ObjInstance *instance, ObjString *name, Value *slot) {
+static bool bindMethod(VM *vm, ObjInstance *instance, ObjClass *klass, ObjString *name, Value *slot) {
 	Value method;
-	if(!tableGet(&instance->klass->methods, name, &method)) {
+	assert(instance);
+	if(!tableGet(&klass->methods, name, &method)) {
 		runtimeError(vm, "Undefined property '%s'.", name->chars);
 		return false;
 	}
@@ -258,7 +259,7 @@ static InterpretResult run(VM *vm) {
 	CallFrame *frame = &vm->frames[vm->frameCount - 1];
 	while(true) {
 #ifdef DEBUG_STACK_USAGE
-		dumpStack(vm, 5);
+		dumpStack(vm, 8);
 #endif /* DEBUG_STACK_USAGE */
 #ifdef DEBUG_UPVALUE_USAGE
 		dumpOpenUpvalues(vm);
@@ -433,7 +434,7 @@ OP_JUMP:
 				ObjString *name = AS_STRING(frame->slots[RC(bytecode)]);
 				if(tableGet(&instance->fields, name, &frame->slots[RA(bytecode)])) {
 					break;
-				} else if(bindMethod(vm, instance, name, &frame->slots[RA(bytecode)])) {
+				} else if(bindMethod(vm, instance, instance->klass, name, &frame->slots[RA(bytecode)])) {
 					break;
 				}
 				return INTERPRET_RUNTIME_ERROR;
@@ -461,6 +462,25 @@ OP_JUMP:
 				return INTERPRET_RUNTIME_ERROR;
 			}
 			*/
+			case OP_INHERIT: {
+				Value superclass = frame->slots[RD(bytecode)];
+				if(!IS_CLASS(superclass)) {
+					runtimeError(vm, "Superclass must be a class.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				ObjClass *subclass = AS_CLASS(frame->slots[RA(bytecode)]);
+				tableAddAll(vm, &AS_CLASS(superclass)->methods, &subclass->methods);
+				break;
+			}
+			case OP_GET_SUPER: {
+				int16_t rb = ((int16_t)(Reg)(RB(bytecode) + 1))-1;
+				ObjClass *superclass = AS_CLASS(frame->slots[RA(bytecode)]);
+				ObjInstance *instance = AS_INSTANCE(frame->slots[rb]);
+				ObjString *name = AS_STRING(frame->slots[RC(bytecode)]);
+				if(!bindMethod(vm, instance, superclass, name, &frame->slots[RA(bytecode)]))
+					return INTERPRET_RUNTIME_ERROR;
+				break;
+			}
 			default:
 				fprintf(stderr, "Unimplemented opcode %d.\n", OP(bytecode));
 				exit(1);

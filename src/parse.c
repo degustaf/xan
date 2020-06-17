@@ -14,6 +14,7 @@
 typedef struct ClassCompiler {
 	struct ClassCompiler *enclosing;
 	Token name;
+	bool hasSuperClass;
 } ClassCompiler;
 
 typedef struct {
@@ -313,6 +314,7 @@ static inline void exprInit(expressionDescription *e, expressionType type, uint1
 
 static void regFree(Compiler *c, int16_t r) {
 	PRINT_FUNCTION;
+	assert(c->nextReg != 0);
 	if(r == 255) return;
 	if(r >= c->actVar) {
 		c->nextReg--;
@@ -470,7 +472,6 @@ static bool jump_novalue(Chunk *c, OP_position list) {
 static size_t emit_jump(Parser *p) {
 	PRINT_FUNCTION;
 	Compiler *c = p->currentCompiler;
-	// TODO handle closing upvalues.
 	printPendingJumps(c);
 	OP_position pjl = c->pendingJumpList;
 	c->pendingJumpList = NO_JUMP;
@@ -723,9 +724,6 @@ static void emit_store(Parser *p, expressionDescription *variable, expressionDes
 			regFree(p->currentCompiler, rc);
 		emit_ABC(p, OP_SET_PROPERTY, ra, variable->u.r.r, rc);
 		variable->u.s.info = ra;
-		// variable->u.s.info = variable->u.r.r;
-		// exprFree(p->currentCompiler, e);
-		// regFree(p->currentCompiler, variable->u.s.aux);
 		variable->type = NONRELOC_EXTYPE;
 		return;
 	}
@@ -794,6 +792,7 @@ static void emitReturn(Parser *p, expressionDescription *e) {
 }
 
 static Compiler* initCompiler(Parser *p, Compiler *compiler, FunctionType type) {
+	PRINT_FUNCTION;
 	compiler->enclosing = p->currentCompiler;
 	compiler->type = type;
 	compiler->localCount = 0;
@@ -843,7 +842,7 @@ static ObjFunction *endCompiler(Parser *p) {
 		f->uv[i] = p->currentCompiler->upvalues[i];
 #ifdef DEBUG_PRINT_CODE
 	if(!p->hadError) {
-		disassembleChunk(currentChunk(p->currentCompiler), f->name == NULL ? "<scripts>" : f->name->chars);
+		disassembleFunction(f);
 	}
 #endif
 	p->vm->currentCompiler = p->currentCompiler = p->currentCompiler->enclosing;
@@ -861,6 +860,13 @@ static uint16_t makeConstant(Parser *p, Value v) {
 
 static bool identifiersEqual(Token *a, Token *b) {
 	return a->length == b->length && memcmp(a->start, b->start, a->length) == 0;
+}
+
+static Token syntheticToken(const char *text) {
+	Token ret;
+	ret.start = text;
+	ret.length = strlen(text);
+	return ret;
 }
 
 static int16_t resolveLocal(Parser *p, Compiler *c, Token *name) {
@@ -886,15 +892,14 @@ static int addLocal(Parser *p, Token name) {
 	local->name = name;
 	local->depth = -1;
 	local->isCaptured = false;
-	return c->localCount-2;
+	return c->localCount - 2;
 }
 
-static int declareVariable(Parser *p) {
+static int declareVariable(Parser *p, Token *name) {
 	PRINT_FUNCTION;
 	if(p->currentCompiler->scopeDepth == 0)	// Global scope
 		return -1;
 
-	Token *name = &p->previous;
 	for(int i=p->currentCompiler->localCount-1; i>=0; i--) {
 		Local *local = &p->currentCompiler->locals[i];
 		if(local->depth != -1 && local->depth < p->currentCompiler->scopeDepth) {
@@ -983,7 +988,6 @@ static Reg argumentList(Parser *p, expressionDescription *e) {
 	PRINT_FUNCTION;
 	expressionDescription args;
 	Reg nargs;
-	assert(e->type == NONRELOC_EXTYPE);
 	Reg base = e->u.s.info;
 	if(match(p, TOKEN_RIGHT_PAREN)) {
 		args.type = VOID_EXTYPE;
@@ -1004,22 +1008,17 @@ static Reg argumentList(Parser *p, expressionDescription *e) {
 	exprInit(e, CALL_EXTYPE, emitBytecode(p, ins));
 	e->u.s.aux = base;
 	p->currentCompiler->nextReg = base+1;
+#ifdef DEBUG_PARSER
+	fprintf(stderr, "nextReg = %d\tbase = %d\n", p->currentCompiler->nextReg, base);
+#endif /* DEBUG_PARSER */
 	return nargs;
 }
 
 static void call(Parser *p, expressionDescription *e) {
 	PRINT_FUNCTION;
-	uint32_t ins = (uint32_t)-1;
-	// if(e->type == INDEXED_EXTYPE) {
-	// 	exprNextReg(p, e);
-	// 	ins = e->u.s.info;
-	// } else {
+	if(!p->hadError)
 		exprNextReg(p, e);
-	// }
 	Reg nargs = argumentList(p, e);
-	// if((ins != (uint32_t)-1) && (nargs <= 0x3f)) {
-	// 	currentChunk(p->currentCompiler)->code[ins] = 0;
-	// }
 }
 
 static void number(Parser *p, expressionDescription *e) {
@@ -1157,6 +1156,35 @@ static void this_(Parser *p, expressionDescription *e) {
 	e->assignable = false;
 }
 
+static void super_(Parser *p, expressionDescription *e) {
+	PRINT_FUNCTION;
+	if(p->currentClass == NULL) {
+		errorAtPrevious(p, "Cannot use 'super' outside of a class.");
+		consume(p, TOKEN_DOT, "Expect '.' after 'super'.");
+		consume(p, TOKEN_IDENTIFIER, "Expect superclass method name.");
+		return;
+	} else if(!p->currentClass->hasSuperClass) {
+		errorAtPrevious(p, "Cannot use 'super' in a class with no superclass.");
+	}
+	expressionDescription superKlass, key;
+	Token t = syntheticToken("this");
+	var_lookup(p, p->currentCompiler, &t, e, true);
+	Token s = syntheticToken("super");
+	var_lookup(p, p->currentCompiler, &s, &superKlass, true);
+
+	consume(p, TOKEN_DOT, "Expect '.' after 'super'.");
+	consume(p, TOKEN_IDENTIFIER, "Expect superclass method name.");
+	makeStringConstant(p, &key, p->previous.start, p->previous.length);
+
+	exprAnyReg(p, e);
+	exprAnyReg(p, &superKlass);
+	exprAnyReg(p, &key);
+
+	emit_ABC(p, OP_GET_SUPER, superKlass.u.s.info, e->u.s.info, key.u.s.info);
+	exprFree(p->currentCompiler, &key);
+	exprInit(e, NONRELOC_EXTYPE, superKlass.u.s.info);
+}
+
 static void primaryExpression(Parser *p, expressionDescription *e) {
 	PRINT_FUNCTION;
 	PRINT_TOKEN;
@@ -1178,6 +1206,9 @@ static void primaryExpression(Parser *p, expressionDescription *e) {
 			break;
 		case TOKEN_STRING:
 			string(p, e);
+			break;
+		case TOKEN_SUPER:
+			super_(p, e);
 			break;
 		case TOKEN_NUMBER:
 			number(p, e);
@@ -1264,18 +1295,23 @@ static void binary(Parser *p, expressionDescription *e, Precedence precedence) {
 	}
 }
 
-static void parseVariable(Parser *p, expressionDescription *e, const char *errorMessage) {
+static void scopeVariable(Parser *p, expressionDescription *e, Token *name) {
 	PRINT_FUNCTION;
-	consume(p, TOKEN_IDENTIFIER, errorMessage);
-	int r = declareVariable(p);
+	int r = declareVariable(p, name);
 	if(r < 0) {
-		p->vm->temp4GC = OBJ_VAL(copyString(p->previous.start, p->previous.length, p->vm));
+		p->vm->temp4GC = OBJ_VAL(copyString(name->start, name->length, p->vm));
 		exprInit(e, GLOBAL_EXTYPE, makeConstant(p, p->vm->temp4GC));
 		p->vm->temp4GC = NIL_VAL;
 	} else {
 		exprInit(e, LOCAL_EXTYPE, r);
 		e->assignable = true;
 	}
+}
+
+static void parseVariable(Parser *p, expressionDescription *e, const char *errorMessage) {
+	PRINT_FUNCTION;
+	consume(p, TOKEN_IDENTIFIER, errorMessage);
+	scopeVariable(p, e, &p->previous);
 }
 
 static void expression(Parser *p, expressionDescription *e) {
@@ -1294,10 +1330,13 @@ static void expressionStatement(Parser *p) {
 	expression(p, &e);
 	consume(p, TOKEN_SEMICOLON, "Expect ';' after expression.");
 	printExpr(stderr, &e);
-	exprAnyReg(p, &e);
+	if(!p->hadError)
+		exprAnyReg(p, &e);
 	printExpr(stderr, &e);
-	// exprFree(p->currentCompiler, &e);
 	p->currentCompiler->nextReg = p->currentCompiler->actVar;
+#ifdef DEBUG_PARSER
+	fprintf(stderr, "nextReg = %d\tactVar = %d\n", p->currentCompiler->nextReg, p->currentCompiler->actVar);
+#endif /* DEBUG_PARSER */
 }
 
 static OP_position expressionCondition(Parser *p) {
@@ -1359,6 +1398,9 @@ static void endScope(Parser *p) {
 	if(closeUpvalues)
 		emit_AD(p, OP_CLOSE_UPVALUES, c->actVar, 0);
 	c->nextReg = c->actVar;
+#ifdef DEBUG_PARSER
+	fprintf(stderr, "nextReg = %d\tactVar = %d\n", c->nextReg, c->actVar);
+#endif /* DEBUG_PARSER */
 	c->scopeDepth--;
 	assert(c->scopeDepth >= 0);
 	c->localCount = i+1;
@@ -1444,32 +1486,50 @@ static void method(Parser *p, expressionDescription *klass) {
 	exprNextReg(p, &name);
 	exprNextReg(p, &m);
 	emit_ABC(p, OP_METHOD, klass->u.s.info, name.u.r.r, m.u.r.r);
-	exprFree(p->currentCompiler, &m);
-	exprFree(p->currentCompiler, &name);
 }
 
 static void classDeclaration(Parser *p) {
 	PRINT_FUNCTION;
 	ClassCompiler classCompiler;
-	expressionDescription name, klass;
+	expressionDescription name, klass, superKlass, superName;
 	parseVariable(p, &name, "Expect class name.");
 	markInitialized(p);
 	classCompiler.name = p->previous;
 	classCompiler.enclosing = p->currentClass;
+	classCompiler.hasSuperClass = false;
 	p->currentClass = &classCompiler;
-	consume(p, TOKEN_LEFT_BRACE, "Expect '{' before class body.");
+
 	printExpr(stderr, &name);
 	p->vm->temp4GC = OBJ_VAL(copyString(classCompiler.name.start, classCompiler.name.length, p->vm));
-	exprInit(&klass, RELOC_EXTYPE, emit_AD(p, OP_CLASS, p->currentCompiler->actVar, makeConstant(p, p->vm->temp4GC)));
-	exprNextReg(p, &klass);
+	regReserve(p->currentCompiler, 1);
+	exprInit(&klass, RELOC_EXTYPE, emit_AD(p, OP_CLASS, 0, makeConstant(p, p->vm->temp4GC)));
 	emitDefine(p, &name, &klass);
 	var_lookup(p, p->currentCompiler, &classCompiler.name, &klass, true);
 	exprNextReg(p, &klass);
-	beginScope(p->currentCompiler);
-	while(!check(p, TOKEN_RIGHT_BRACE) && !check(p, TOKEN_EOF)) {
-		method(p, &klass);
+
+	if(match(p, TOKEN_LESS)) {
+		consume(p, TOKEN_IDENTIFIER, "Expect superclass name.");
+		if(identifiersEqual(&classCompiler.name, &p->previous)) {
+			errorAtPrevious(p, "A class cannot inherit from itself.");
+		}
+		var_lookup(p, p->currentCompiler, &p->previous, &superKlass, true);
+
+		Reg rSuper = exprAnyReg(p, &superKlass);
+		emit_AD(p, OP_INHERIT, klass.u.s.info, rSuper);
+		beginScope(p->currentCompiler);
+		Token superToken = syntheticToken("super");
+		scopeVariable(p, &superName, &superToken);
+		markInitialized(p);
+		emitDefine(p, &superName, &superKlass);
+		classCompiler.hasSuperClass = true;
 	}
-	endScope(p);
+
+	consume(p, TOKEN_LEFT_BRACE, "Expect '{' before class body.");
+	while(!check(p, TOKEN_RIGHT_BRACE) && !check(p, TOKEN_EOF))
+		method(p, &klass);
+	if(classCompiler.hasSuperClass) {
+		endScope(p);
+	}
 	consume(p, TOKEN_RIGHT_BRACE, "Expect '}' after class body.");
 	p->currentClass = classCompiler.enclosing;
 }
@@ -1519,8 +1579,10 @@ static void varDeclaration(Parser *p) {
 	}
 	consume(p, TOKEN_SEMICOLON, "Expect ';' after variable declaration.");
 
+	if(!p->hadError) {
 	assign_adjust(p, &e);
 	emitDefine(p, &v, &e);
+	}
 }
 
 static void forStatement(Parser *p) {
@@ -1581,6 +1643,9 @@ static void statement(Parser *p) {
 	}
 	assert(p->currentCompiler->nextReg >= p->currentCompiler->actVar);
 	p->currentCompiler->nextReg = p->currentCompiler->actVar;
+#ifdef DEBUG_PARSER
+	fprintf(stderr, "nextReg = %d\tactVar = %d\n", p->currentCompiler->nextReg, p->currentCompiler->actVar);
+#endif /* DEBUG_PARSER */
 }
 
 static void declaration(Parser *p) {

@@ -3,8 +3,9 @@
 
 #include "vm.h"
 
-void disassembleChunk(Chunk* chunk, const char *name);
 void disassembleInstruction(Chunk* chunk, size_t offset);
+void disassembleChunk(Chunk* chunk);
+void disassembleFunction(ObjFunction *f);
 void dumpStack(VM *vm, size_t count);
 void dumpOpenUpvalues(VM *vm);
 void dumpClosedUpvalues(ObjClosure *c);

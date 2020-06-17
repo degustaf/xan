@@ -188,15 +188,22 @@ void disassembleInstruction(Chunk* chunk, size_t offset) {
 		case OP_SET_PROPERTY:
 			InstructionABC("OP_SET_PROPERTY", bytecode);
 			break;
+		case OP_METHOD:
+			InstructionABC("OP_METHOD", bytecode);
+			break;
+		case OP_INHERIT:
+			InstructionAD("OP_INHERIT", bytecode);
+			break;
+		case OP_GET_SUPER:
+			InstructionABC("OP_GET_SUPER", bytecode);
+			break;
 		default:
 			printf("Unknown opcode %d\n", OP(bytecode));
 			return;
 	}
 }
 
-void disassembleChunk(Chunk* chunk, const char *name) {
-	printf("== %s ==\n", name);
-
+void disassembleChunk(Chunk* chunk) {
 	printf(" = Constants\n");
 	for(size_t i = 0; i < chunk->constants.count; i++) {
 		printf("%03zu\t'", i);
@@ -208,6 +215,20 @@ void disassembleChunk(Chunk* chunk, const char *name) {
 	for(size_t offset = 0; offset < chunk->count; offset++) {
 		disassembleInstruction(chunk, offset);
 	}
+}
+
+void disassembleFunction(ObjFunction *f) {
+	printf("== %s ==\n", f->name == NULL ? "<scripts>" : f->name->chars);
+
+	printf("upvalues:");
+	if(f->uvCount > 0) {
+		printf("0x%x", f->uv[0]);
+		for(size_t i = 1; i<f->uvCount; i++)
+			printf(", 0x%x", f->uv[i]);
+	}
+	printf("\n");
+
+	disassembleChunk(&f->chunk);
 }
 
 static void dumpValueArray(Value *valueArray, Value *ArrayTop, size_t count) {

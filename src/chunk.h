@@ -50,6 +50,8 @@ typedef enum {
 	OP_SET_PROPERTY,		// Registers: A,B,C
 	OP_METHOD,				// Registers: A,B,C
 	// OP_INVOKE,			// Registers: M,N,O,P
+	OP_INHERIT,				// Registers: A,D
+	OP_GET_SUPER,			// Registers: A,B,C
 } ByteCode;
 
 #define COMMA ,
