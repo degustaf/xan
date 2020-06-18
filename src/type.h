@@ -7,9 +7,10 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <sys/types.h>
 
 #define FRAMES_MAX 64
-#define BASE_STACK_SIZE 100
+#define BASE_STACK_SIZE 16
 
 #define OBJ_BUILDER(X) \
 	X(STRING), \
@@ -120,7 +121,7 @@ typedef struct {
 
 typedef struct {
 	size_t count;
-	size_t capacity;
+	ssize_t capacityMask;
 	Entry *entries;
 } Table;
 

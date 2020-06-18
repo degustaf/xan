@@ -9,7 +9,6 @@ bool tableGet(Table *t, ObjString *key, Value *value);
 bool tableSet(VM *vm, Table *t, ObjString *key, Value value);
 bool tableDelete(Table *t, ObjString *key);
 void tableAddAll(VM *vm, Table *from, Table *to);
-void tableRemoveWhite(Table *t);
 ObjString *tableFindString(Table *t, const char *chars, size_t length, uint32_t hash);
 
 #endif /* XAN_TABLE_H */

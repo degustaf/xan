@@ -1,70 +1,58 @@
 #!/usr/bin/env python3
 
-from os.path import join
+from math import sqrt
+from os import listdir
+from os.path import abspath, dirname, isdir, join, realpath, relpath
 from subprocess import Popen, PIPE
-import sys
+
+def repeat(n, args):
+    i = 0
+    while i < n:
+        out, err = Popen(args, stdin=PIPE, stdout=PIPE, stderr=PIPE).communicate()
+        if(err):
+            print("Error in " + path + ":\n")
+            print(err.decode("utf-8"))
+            return
+
+        out = out.decode("utf-8").replace('\r\n', '\n')
+        out_lines = out.split('\n')
+        if out_lines[-1] == '':
+            del out_lines[-1]
+        yield float(out_lines[-1])
+        i += 1
 
 
-def color_text(text, color):
-  """Converts text to a string and wraps it in the ANSI escape sequence for
-  color, if supported."""
+def runTest(path, n):
+    args = ['./xan', path]
+    total = 0
+    sumSquares = 0
 
-  # No ANSI escapes on Windows.
-  if sys.platform == 'win32':
-    return str(text)
+    for x in repeat(n, args):
+        total += x
+        sumSquares += x * x
 
-  return color + str(text) + '\033[0m'
+    print("{0: <40}{1: <20}{2: <20}".format(path, total/n, sqrt((sumSquares - total * total / n) / (n-1))))
 
+def walk(dir, callback):
+    """
+    Walks [dir], and executes [callback] on each file.
+    """
 
-def green(text):  return color_text(text, '\033[32m')
-def pink(text):   return color_text(text, '\033[91m')
-def red(text):    return color_text(text, '\033[31m')
-def yellow(text): return color_text(text, '\033[33m')
+    dir = abspath(dir)
+    for file in listdir(dir):
+        nfile = join(dir, file)
+        if isdir(nfile):
+            walk(nfile, callback)
+        else:
+            callback(nfile)
 
-
-def print_line(line=None):
-  # Erase the line.
-  print('\033[2K', end='')
-  # Move the cursor to the beginning.
-  print('\r', end='')
-  if line:
-    print(line, end='')
-    sys.stdout.flush()
-
-
-def run_trial(benchmark):
-  """Runs the benchmark once and returns the elapsed time."""
-  args = ['build/xan', join('test', 'benchmark', benchmark + '.xan')]
-  proc = Popen(args, stdin=PIPE, stdout=PIPE, stderr=PIPE)
-
-  out, err = proc.communicate()
-
-  out = out.decode("utf-8").replace('\r\n', '\n')
-
-  # Remove the trailing last empty line.
-  out_lines = out.split('\n')
-  if out_lines[-1] == '':
-    del out_lines[-1]
-
-  # The benchmark should print the elapsed time last.
-  return float(out_lines[-1])
+def run_script(n):
+    def f(path):
+        runTest(relpath(path).replace("\\", "/"), n)
+    return f
 
 
-def run_benchmark(benchmark):
-  trial = 1
-  best = 9999
-
-  while True:
-    elapsed = run_trial(benchmark)
-    if elapsed < best:
-      best = elapsed
-    print_line("trial {0}   time {1:.4}s   best {2:.4}s".format(trial, elapsed, best))
-    trial += 1
-
-
-if len(sys.argv) != 2:
-  print('Usage: benchmark.py <benchmark>')
-  sys.exit(1)
-
-if not run_benchmark(sys.argv[1]):
-  sys.exit(1)
+if __name__ == '__main__':
+    n = 5
+    print('{0: <40}{1: <20}{2: <20}'.format('5', 'mean', 'std.dev.'))
+    walk(join(dirname(dirname(realpath(__file__))), 'test/benchmark'), run_script(n))

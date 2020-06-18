@@ -30,7 +30,7 @@ SRCS =			$(wildcard $(PATHS)/*.c)
 USRCS =			$(wildcard $(PATHU)/*.c)
 LINK = 			$(CC)
 C_STD =			c99
-CFLAGS =		-I$(PATHS) -Wall -Wextra -pedantic $(ARCH) -std=$(C_STD) -D_POSIX_C_SOURCE=200809L
+CFLAGS =		-I$(PATHS) -Wall -Wextra -pedantic $(ARCH) -std=$(C_STD) -D_POSIX_C_SOURCE=200809L -ggdb
 
 LDFLAGS =		$(ARCH)
 LDLIBS =

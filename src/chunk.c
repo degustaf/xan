@@ -35,5 +35,6 @@ size_t writeChunk(VM *vm, Chunk *chunk, uint32_t opcode, size_t line) {
 size_t addConstant(VM *vm, Chunk *chunk, Value value) {
 	vm->temp4GC = value;
 	writeValueArray(vm, &chunk->constants, value);
+	vm->temp4GC = NIL_VAL;
 	return chunk->constants.count - 1;
 }

@@ -118,6 +118,22 @@ static void runtimeError(VM *vm, const char* format, ...) {
 	resetStack(vm);
 }
 
+static void growStack(VM *vm, size_t space_needed) {
+	// pointers into stack: stackTop, stackLast, vm->frames[].slots
+	size_t stackTopIndex = vm->stackTop - vm->stack;
+	size_t stackLastIndex = vm->stackLast - vm->stack;
+
+	Value *oldStack = vm->stack;
+	size_t oldStackSize = vm->stackSize;
+	while(vm->stackSize < space_needed)
+		vm->stackSize = GROW_CAPACITY(vm->stackSize);
+	vm->stack = GROW_ARRAY(vm->stack, Value, oldStackSize, vm->stackSize);
+	vm->stackTop = vm->stack + stackTopIndex;
+	vm->stackLast = vm->stack + stackLastIndex;
+	for(size_t i = 0; i < vm->frameCount; i++)
+		vm->frames[i].slots += vm->stack - oldStack;
+}
+
 static bool call(VM *vm, ObjClosure *function, Value *base, Reg argCount, Reg retCount) {
 	if(argCount != function->f->arity) {	// TODO make variadic functions.
 		runtimeError(vm, "Expected %d arguments but got %d.", function->f->arity, argCount);
@@ -127,15 +143,16 @@ static bool call(VM *vm, ObjClosure *function, Value *base, Reg argCount, Reg re
 		runtimeError(vm, "Stack overflow.");
 		return false;
 	}
-	CallFrame *frame = &vm->frames[vm->frameCount++];
-	if(base + function->f->stackUsed > vm->stackLast) {
-		vm->frameCount--;
-		runtimeError(vm, "Stack overflow.");
-		return false;
+	if(base + 1 + function->f->stackUsed > vm->stackLast) {
+		size_t base_index = base - vm->stack;
+		// prinf("base = %x\tstack = 
+		growStack(vm, base_index + function->f->stackUsed + 1);
+		base = vm->stack + base_index;
 	}
-	if(base + function->f->stackUsed >= vm->stackTop)
+	if(base + function->f->stackUsed > vm->stackTop)
 		vm->stackTop = base + function->f->stackUsed + 1;
 
+	CallFrame *frame = &vm->frames[vm->frameCount++];
 	frame->c = function;
 	frame->ip = function->f->chunk.code;
 

@@ -59,7 +59,7 @@ static void markArray(VM *vm, ValueArray *array) {
 }
 
 static void markTable(VM *vm, Table *t) {
-	for(size_t i=0; i<t->capacity; i++) {
+	for(ssize_t i=0; i<=t->capacityMask; i++) {
 		Entry *e = &t->entries[i];
 		markObject(vm, (Obj*)e->key);
 		markValue(vm, e->value);
@@ -202,6 +202,14 @@ static void sweep(VM *vm) {
 			*o = (*o)->next;
 			freeObject(vm, unreached);
 		}
+	}
+}
+
+static void tableRemoveWhite(Table *t) {
+	for(ssize_t i=0; i<=t->capacityMask; i++) {
+		Entry *e = &t->entries[i];
+		if(e->key && isWhite(e->key))
+			tableDelete(t, e->key);
 	}
 }
 

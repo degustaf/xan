@@ -61,7 +61,7 @@ typedef enum {
 	LOCAL_EXTYPE,			// (int16_t)u.s.info is stack register. 
 	JUMP_EXTYPE,		//10// u.s.info is instruction number.
 	CALL_EXTYPE,			// u.s.info is instruction number, aux is base register.
-	INDEXED_EXTYPE,			// u.r.r is stack register, u.s.aux is key register.
+	INDEXED_EXTYPE,			// u.s.info is stack register, u.s.aux is key register.
 	VOID_EXTYPE,
 } expressionType;
 
@@ -314,8 +314,8 @@ static inline void exprInit(expressionDescription *e, expressionType type, uint1
 
 static void regFree(Compiler *c, int16_t r) {
 	PRINT_FUNCTION;
-	assert(c->nextReg != 0);
 	if(r == 255) return;
+	assert(c->nextReg != 0);
 	if(r >= c->actVar) {
 		c->nextReg--;
 #ifdef DEBUG_PARSER
@@ -348,8 +348,8 @@ static void exprDischarge(Parser *p, expressionDescription *e) {
 		case INDEXED_EXTYPE: {
 			Reg rkey = e->u.s.aux;
 			regFree(p->currentCompiler, rkey);
-			uint32_t ins = OP_ABC(OP_GET_PROPERTY, 0, e->u.r.r, rkey);
-			regFree(p->currentCompiler, e->u.r.r);
+			uint32_t ins = OP_ABC(OP_GET_PROPERTY, 0, (Reg)e->u.s.info, rkey);
+			regFree(p->currentCompiler, (Reg)e->u.s.info);
 			e->u.s.info = emitBytecode(p, ins);
 			e->type = RELOC_EXTYPE;
 			return;
@@ -722,7 +722,7 @@ static void emit_store(Parser *p, expressionDescription *variable, expressionDes
 		Reg rc = variable->u.s.aux;
 		if((e->type == NONRELOC_EXTYPE) && (ra >= p->currentCompiler->actVar) && (rc >= ra))
 			regFree(p->currentCompiler, rc);
-		emit_ABC(p, OP_SET_PROPERTY, ra, variable->u.r.r, rc);
+		emit_ABC(p, OP_SET_PROPERTY, ra, variable->u.s.info, rc);
 		variable->u.s.info = ra;
 		variable->type = NONRELOC_EXTYPE;
 		return;
@@ -1061,8 +1061,8 @@ static void expressionIndexed(Parser *p, expressionDescription *e, expressionDes
 static void dot(Parser *p, expressionDescription *v) {
 	PRINT_FUNCTION;
 	consume(p, TOKEN_IDENTIFIER, "Expect property name after '.'.");
-	exprAnyReg(p, v);
 	expressionDescription key;
+	exprAnyReg(p, v);
 	makeStringConstant(p, &key, p->previous.start, p->previous.length);
 	expressionIndexed(p, v, &key);
 }
@@ -1165,8 +1165,11 @@ static void super_(Parser *p, expressionDescription *e) {
 		return;
 	} else if(!p->currentClass->hasSuperClass) {
 		errorAtPrevious(p, "Cannot use 'super' in a class with no superclass.");
+		exit(EXIT_COMPILE_ERROR);
+		return;
 	}
-	expressionDescription superKlass, key;
+	expressionDescription superKlass = (expressionDescription){NIL_EXTYPE,};
+		expressionDescription key;
 	Token t = syntheticToken("this");
 	var_lookup(p, p->currentCompiler, &t, e, true);
 	Token s = syntheticToken("super");
@@ -1176,9 +1179,11 @@ static void super_(Parser *p, expressionDescription *e) {
 	consume(p, TOKEN_IDENTIFIER, "Expect superclass method name.");
 	makeStringConstant(p, &key, p->previous.start, p->previous.length);
 
+	p->vm->temp4GC = key.u.v;
 	exprAnyReg(p, e);
 	exprAnyReg(p, &superKlass);
 	exprAnyReg(p, &key);
+	p->vm->temp4GC = NIL_VAL;
 
 	emit_ABC(p, OP_GET_SUPER, superKlass.u.s.info, e->u.s.info, key.u.s.info);
 	exprFree(p->currentCompiler, &key);
@@ -1464,6 +1469,7 @@ static void function(Parser *p, expressionDescription *e, FunctionType type) {
 	block(p);
 	endScope(p);
 
+	p->vm->temp4GC = NIL_VAL;
 	ObjFunction *f = endCompiler(p);
 	p->vm->temp4GC = OBJ_VAL(f);
 	exprInit(e, RELOC_EXTYPE, emit_AD(p, OP_CLOSURE, p->currentCompiler->actVar, makeConstant(p, OBJ_VAL(f))));
@@ -1500,9 +1506,10 @@ static void classDeclaration(Parser *p) {
 	p->currentClass = &classCompiler;
 
 	printExpr(stderr, &name);
-	p->vm->temp4GC = OBJ_VAL(copyString(classCompiler.name.start, classCompiler.name.length, p->vm));
 	regReserve(p->currentCompiler, 1);
+	p->vm->temp4GC = OBJ_VAL(copyString(classCompiler.name.start, classCompiler.name.length, p->vm));
 	exprInit(&klass, RELOC_EXTYPE, emit_AD(p, OP_CLASS, 0, makeConstant(p, p->vm->temp4GC)));
+	p->vm->temp4GC = NIL_VAL;
 	emitDefine(p, &name, &klass);
 	var_lookup(p, p->currentCompiler, &classCompiler.name, &klass, true);
 	exprNextReg(p, &klass);

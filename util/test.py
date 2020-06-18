@@ -60,8 +60,6 @@ c_interpreter('xan', {
    'test/method/too_many_parameters.xan': 'skip',
 })
 
-# TODO: Other chapters.
-
 class Test:
   def __init__(self, path):
     self.path = path
