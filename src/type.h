@@ -9,7 +9,7 @@
 #include <stdint.h>
 #include <sys/types.h>
 
-#define FRAMES_MAX 64
+#define FRAMES_MAX 256
 #define BASE_STACK_SIZE 16
 
 #define OBJ_BUILDER(X) \

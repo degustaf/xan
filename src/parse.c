@@ -785,6 +785,7 @@ static void emitDefine(Parser *p, expressionDescription *v, expressionDescriptio
 	exprAnyReg(p, e);
 	emitBytecode(p, OP_AD(OP_DEFINE_GLOBAL, e->u.r.r, v->u.s.info));
 	exprFree(p->currentCompiler, e);
+	exprFree(p->currentCompiler, v);
 }
 
 static void emitReturn(Parser *p, expressionDescription *e) {
@@ -864,6 +865,7 @@ static bool identifiersEqual(Token *a, Token *b) {
 
 static Token syntheticToken(const char *text) {
 	Token ret;
+	ret.type = TOKEN_IDENTIFIER;
 	ret.start = text;
 	ret.length = strlen(text);
 	return ret;
@@ -1169,7 +1171,7 @@ static void super_(Parser *p, expressionDescription *e) {
 		return;
 	}
 	expressionDescription superKlass = (expressionDescription){NIL_EXTYPE,};
-		expressionDescription key;
+	expressionDescription key;
 	Token t = syntheticToken("this");
 	var_lookup(p, p->currentCompiler, &t, e, true);
 	Token s = syntheticToken("super");
@@ -1338,7 +1340,7 @@ static void expressionStatement(Parser *p) {
 	if(!p->hadError)
 		exprAnyReg(p, &e);
 	printExpr(stderr, &e);
-	p->currentCompiler->nextReg = p->currentCompiler->actVar;
+	// p->currentCompiler->nextReg = p->currentCompiler->actVar;
 #ifdef DEBUG_PARSER
 	fprintf(stderr, "nextReg = %d\tactVar = %d\n", p->currentCompiler->nextReg, p->currentCompiler->actVar);
 #endif /* DEBUG_PARSER */
@@ -1484,14 +1486,16 @@ static void method(Parser *p, expressionDescription *klass) {
 	consume(p, TOKEN_IDENTIFIER, "Expect method name.");
 	makeStringConstant(p, &name, p->previous.start, p->previous.length);
 	printExpr(stderr, &name);
+	exprNextReg(p, &name);
 	if((p->previous.length == 4) && (strncmp(p->previous.start, "init", 4) == 0)) {
 		function(p, &m, TYPE_INITIALIZER);
 	} else {
 		function(p, &m, TYPE_METHOD);
 	}
-	exprNextReg(p, &name);
 	exprNextReg(p, &m);
 	emit_ABC(p, OP_METHOD, klass->u.s.info, name.u.r.r, m.u.r.r);
+	exprFree(p->currentCompiler, &m);
+	exprFree(p->currentCompiler, &name);
 }
 
 static void classDeclaration(Parser *p) {
@@ -1587,8 +1591,8 @@ static void varDeclaration(Parser *p) {
 	consume(p, TOKEN_SEMICOLON, "Expect ';' after variable declaration.");
 
 	if(!p->hadError) {
-	assign_adjust(p, &e);
-	emitDefine(p, &v, &e);
+		assign_adjust(p, &e);
+		emitDefine(p, &v, &e);
 	}
 }
 
@@ -1669,6 +1673,7 @@ static void declaration(Parser *p) {
 
 	if(p->panicMode)
 		synchronize(p);
+	p->currentCompiler->nextReg = p->currentCompiler->actVar;
 }
 
 static void initParser(Parser *p, VM *vm, Compiler *compiler, const char *source) {
