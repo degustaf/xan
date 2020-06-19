@@ -9,6 +9,11 @@ env:
     - ARCH="-m64"
     - ARCH="-m32"
 
+jobs:
+    allow_failures:
+        - os: osx
+          env: ARCH="-m64"
+
 addons:
     apt:
         packages:
