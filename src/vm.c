@@ -130,7 +130,7 @@ static void growStack(VM *vm, size_t space_needed) {
 	vm->stackTop = vm->stack + stackTopIndex;
 	vm->stackLast = vm->stack + vm->stackSize - 1;
 	for(size_t i = 0; i < vm->frameCount; i++)
-		vm->frames[i].slots += vm->stack - oldStack;
+		vm->frames[i].slots = (Value*)((char*)vm->frames[i].slots + ((char*)vm->stack - (char*)oldStack));
 }
 
 static bool call(VM *vm, ObjClosure *function, Value *base, Reg argCount, Reg retCount) {
