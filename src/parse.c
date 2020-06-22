@@ -976,7 +976,7 @@ static Reg exprList(Parser *p, expressionDescription *e, Reg base) {
 	while(match(p, TOKEN_COMMA)) {
 		exprDischarge(p, e);
 		exprFree(p->currentCompiler, e);
-		if(base + n > p->currentCompiler->nextReg)
+		if(base + n >= p->currentCompiler->nextReg)
 			regReserve(p->currentCompiler, 1);
 		exprToReg(p, e, base + n);
 
@@ -1510,13 +1510,12 @@ static void classDeclaration(Parser *p) {
 	p->currentClass = &classCompiler;
 
 	printExpr(stderr, &name);
-	regReserve(p->currentCompiler, 1);
 	p->vm->temp4GC = OBJ_VAL(copyString(classCompiler.name.start, classCompiler.name.length, p->vm));
 	exprInit(&klass, RELOC_EXTYPE, emit_AD(p, OP_CLASS, 0, makeConstant(p, p->vm->temp4GC)));
 	p->vm->temp4GC = NIL_VAL;
+	exprAnyReg(p, &klass);
 	emitDefine(p, &name, &klass);
 	var_lookup(p, p->currentCompiler, &classCompiler.name, &klass, true);
-	exprNextReg(p, &klass);
 
 	if(match(p, TOKEN_LESS)) {
 		consume(p, TOKEN_IDENTIFIER, "Expect superclass name.");
@@ -1526,13 +1525,16 @@ static void classDeclaration(Parser *p) {
 		var_lookup(p, p->currentCompiler, &p->previous, &superKlass, true);
 
 		Reg rSuper = exprAnyReg(p, &superKlass);
-		emit_AD(p, OP_INHERIT, klass.u.s.info, rSuper);
 		beginScope(p->currentCompiler);
 		Token superToken = syntheticToken("super");
 		scopeVariable(p, &superName, &superToken);
 		markInitialized(p);
 		emitDefine(p, &superName, &superKlass);
+		exprAnyReg(p, &klass);
+		emit_AD(p, OP_INHERIT, klass.u.s.info, rSuper);
 		classCompiler.hasSuperClass = true;
+	} else {
+		exprAnyReg(p, &klass);
 	}
 
 	consume(p, TOKEN_LEFT_BRACE, "Expect '{' before class body.");

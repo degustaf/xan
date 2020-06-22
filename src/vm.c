@@ -121,7 +121,6 @@ static void runtimeError(VM *vm, const char* format, ...) {
 static void growStack(VM *vm, size_t space_needed) {
 	// pointers into stack: stackTop, stackLast, vm->frames[].slots
 	size_t stackTopIndex = vm->stackTop - vm->stack;
-	size_t stackLastIndex = vm->stackLast - vm->stack;
 
 	Value *oldStack = vm->stack;
 	size_t oldStackSize = vm->stackSize;
@@ -129,7 +128,7 @@ static void growStack(VM *vm, size_t space_needed) {
 		vm->stackSize = GROW_CAPACITY(vm->stackSize);
 	vm->stack = GROW_ARRAY(vm->stack, Value, oldStackSize, vm->stackSize);
 	vm->stackTop = vm->stack + stackTopIndex;
-	vm->stackLast = vm->stack + stackLastIndex;
+	vm->stackLast = vm->stack + vm->stackSize - 1;
 	for(size_t i = 0; i < vm->frameCount; i++)
 		vm->frames[i].slots += vm->stack - oldStack;
 }
@@ -146,7 +145,7 @@ static bool call(VM *vm, ObjClosure *function, Value *base, Reg argCount, Reg re
 	if(base + 1 + function->f->stackUsed > vm->stackLast) {
 		size_t base_index = base - vm->stack;
 		// prinf("base = %x\tstack = 
-		growStack(vm, base_index + function->f->stackUsed + 1);
+		growStack(vm, base_index + function->f->stackUsed + 2);
 		base = vm->stack + base_index;
 	}
 	if(base + function->f->stackUsed > vm->stackTop)

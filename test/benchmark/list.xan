@@ -1,0 +1,44 @@
+class Element {
+  init(v) {
+    this.val = v;
+    this.next = nil;
+  }
+
+  length() {
+    if(this.next) // nil is false.
+      return 1 + this.next.length();
+    return 1;
+  }
+
+  __lt(e) {
+    var xTail = this;
+    var yTail = e;
+    while(yTail) {
+      if(xTail == nil)
+        return true;
+      xTail = xTail.next;
+      yTail = yTail.next;
+    }
+    return false;
+  }
+}
+
+fun makeList(length) {
+  if(length == 0)
+    return nil;
+  var e = Element(length);
+  e.next = makeList(length - 1);
+  return e;
+}
+
+fun tail(x, y, z) {
+  if(y.__lt(x))
+    return tail(tail(x.next, y, z),
+                tail(y.next, z, x),
+                tail(z.next, x, y));
+  return z;
+}
+
+var start = clock();
+print(tail(makeList(15), makeList(10), makeList(6)).length());
+print(clock() - start);

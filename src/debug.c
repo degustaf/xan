@@ -72,7 +72,7 @@ static void callInstruction(const char *name, uint32_t bytecode) {
 	uint8_t regA = RA(bytecode);
 	uint8_t regB = RB(bytecode);
 	uint8_t regC = RC(bytecode);
-	printf("%-16s call Reg %4d with arg count Reg %4d returning Reg %4d\n", name, regA, regB, regC);
+	printf("%-16s call Reg %4d with arg count %4d returning %4d\n", name, regA, regC, regB);
 }
 
 static void returnInstruction(const char *name, uint32_t bytecode) {
