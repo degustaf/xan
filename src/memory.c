@@ -53,7 +53,7 @@ static void markValue(VM *vm, Value v) {
 	markObject(vm, AS_OBJ(v));
 }
 
-static void markArray(VM *vm, ValueArray *array) {
+static void markArray(VM *vm, ObjArray *array) {
 	for(size_t i=0; i<array->count; i++)
 		markValue(vm, array->values[i]);
 }
@@ -69,7 +69,7 @@ static void markTable(VM *vm, Table *t) {
 static void markCompilerRoots(VM *vm) {
 	for(Compiler *c = vm->currentCompiler; c != NULL; c = c->enclosing) {
 		markObject(vm, (Obj*)c->name);
-		markArray(vm, &c->chunk.constants);
+		markObject(vm, (Obj*)c->chunk.constants);
 	}
 }
 
@@ -119,13 +119,18 @@ static void blackenObject(VM *vm, Obj *o) {
 		case OBJ_FUNCTION: {
 			ObjFunction *f = (ObjFunction*)o;
 			markObject(vm, (Obj*)f->name);
-			markArray(vm, &f->chunk.constants);
+			markObject(vm, (Obj*)f->chunk.constants);
 			break;
 		}
 		case OBJ_INSTANCE: {
 			ObjInstance *instance = (ObjInstance*)o;
 			markObject(vm, (Obj*)instance->klass);
 			markTable(vm, &instance->fields);
+			break;
+		}
+		case OBJ_ARRAY: {
+			ObjArray *array = (ObjArray*)o;
+			markArray(vm, array);
 			break;
 		}
 		case OBJ_UPVALUE:
@@ -188,7 +193,25 @@ static void freeObject(VM *vm, Obj *object) {
 		case OBJ_UPVALUE:
 			FREE(ObjUpvalue, object);
 			break;
+		case OBJ_ARRAY: {
+			ObjArray *array = (ObjArray*)object;
+			FREE_ARRAY(Value, array->values, array->capacity);
+			FREE(ObjArray, object);
+			break;
+		}
 	}
+}
+
+void freeChunk(VM *vm, Chunk *chunk) {
+	FREE_ARRAY(uint32_t, chunk->code, chunk->capacity);
+	FREE_ARRAY(size_t, chunk->lines, chunk->capacity);
+	// freeObject(vm, (Obj*)&chunk->constants);
+	chunk->constants = NULL;
+	chunk->count = 0;
+	chunk->capacity = 0;
+	chunk->code = NULL;
+	chunk->lines = NULL;
+	chunk->constants = NULL;
 }
 
 static void sweep(VM *vm) {

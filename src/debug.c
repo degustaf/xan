@@ -15,7 +15,7 @@ static void constantInstruction(const char *name, Chunk *chunk, uint32_t bytecod
 	uint16_t constant = RD(bytecode);
 	printf("%-16s %4d '", name, constant);
 	if(constant < chunk->count)
-		printValue(chunk->constants.values[constant]);
+		printValue(chunk->constants->values[constant]);
 	else
 		printf("Out of Range");
 	printf("' to register %d\n", reg);
@@ -45,7 +45,7 @@ static void InstructionADstr(const char *name, Chunk *chunk, uint32_t bytecode) 
 	uint16_t constant = RD(bytecode);
 	printf("%-16s variable %4d '", name, constant);
 	if(constant < chunk->count)
-		printValue(chunk->constants.values[constant]);
+		printValue(chunk->constants->values[constant]);
 	else
 		printf("Out of Range");
 	printf("' to register %d\n", reg);
@@ -197,6 +197,9 @@ void disassembleInstruction(Chunk* chunk, size_t offset) {
 		case OP_GET_SUPER:
 			InstructionABC("OP_GET_SUPER", bytecode);
 			break;
+		case OP_NEW_ARRAY:
+			InstructionAD("OP_NEW_ARRAY", bytecode);
+			break;
 		default:
 			printf("Unknown opcode %d\n", OP(bytecode));
 			return;
@@ -205,9 +208,9 @@ void disassembleInstruction(Chunk* chunk, size_t offset) {
 
 void disassembleChunk(Chunk* chunk) {
 	printf(" = Constants\n");
-	for(size_t i = 0; i < chunk->constants.count; i++) {
+	for(size_t i = 0; i < chunk->constants->count; i++) {
 		printf("%03zu\t'", i);
-		printValue(chunk->constants.values[i]);
+		printValue(chunk->constants->values[i]);
 		printf("'\n");
 	}
 	printf("\n");

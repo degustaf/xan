@@ -20,9 +20,7 @@
 #define OBJ_VAL(object)   ((Value){ VAL_OBJ, { .obj = (Obj*)object } })
 
 bool valuesEqual(Value, Value);
-void initValueArray(ValueArray *array);
-void writeValueArray(VM *vm, ValueArray *array, Value value);
-void freeValueArray(VM *vm, ValueArray *array);
+void writeValueArray(VM *vm, ObjArray *array, Value value);
 void fprintValue(FILE *restrict stream, Value value);
 void printValue(Value value);
 

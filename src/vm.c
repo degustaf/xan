@@ -270,7 +270,7 @@ static void defineMethod(VM *vm, Value ra, Value rb, Value rc) {
 		} \
 		frame->slots[RA(bytecode)] = valueType(AS_NUMBER(b) op AS_NUMBER(c)); \
 	} while(false)
-#define READ_STRING() AS_STRING(frame->c->f->chunk.constants.values[RD(bytecode)])
+#define READ_STRING() AS_STRING(frame->c->f->chunk.constants->values[RD(bytecode)])
 static InterpretResult run(VM *vm) {
 	CallFrame *frame = &vm->frames[vm->frameCount - 1];
 	while(true) {
@@ -290,7 +290,7 @@ static InterpretResult run(VM *vm) {
 		uint32_t bytecode = READ_BYTECODE();
 		switch(OP(bytecode)) {
 			case OP_CONST_NUM:
-				frame->slots[RA(bytecode)] = frame->c->f->chunk.constants.values[RD(bytecode)];
+				frame->slots[RA(bytecode)] = frame->c->f->chunk.constants->values[RD(bytecode)];
 				break;
 			case OP_PRIMITIVE:
 				frame->slots[RA(bytecode)] = getPrimitive(RD(bytecode)); break;
@@ -420,7 +420,7 @@ OP_JUMP:
 				break;
 			}
 			case OP_CLOSURE: {
-				ObjFunction *f = AS_FUNCTION(frame->c->f->chunk.constants.values[RD(bytecode)]);
+				ObjFunction *f = AS_FUNCTION(frame->c->f->chunk.constants->values[RD(bytecode)]);
 				ObjClosure *cl = newClosure(vm, f);
 				frame->slots[RA(bytecode)] = OBJ_VAL(cl);	// Can be found by GC
 				for(size_t i=0; i<f->uvCount; i++) {
@@ -435,7 +435,7 @@ OP_JUMP:
 				closeUpvalues(vm, frame->slots + RA(bytecode));
 				break;
 			case OP_CLASS: {
-				ObjClass *klass = newClass(vm, AS_STRING(frame->c->f->chunk.constants.values[RD(bytecode)]));
+				ObjClass *klass = newClass(vm, AS_STRING(frame->c->f->chunk.constants->values[RD(bytecode)]));
 				frame->slots[RA(bytecode)] = OBJ_VAL(klass);
 				break;
 			}
@@ -495,6 +495,10 @@ OP_JUMP:
 				ObjString *name = AS_STRING(frame->slots[RC(bytecode)]);
 				if(!bindMethod(vm, instance, superclass, name, &frame->slots[RA(bytecode)]))
 					return INTERPRET_RUNTIME_ERROR;
+				break;
+			}
+			case OP_NEW_ARRAY: {
+				frame->slots[RA(bytecode)] = OBJ_VAL(newArray(vm, RD(bytecode)));
 				break;
 			}
 			default:

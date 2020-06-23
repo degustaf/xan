@@ -1,20 +1,15 @@
 #include "chunk.h"
 
 #include "memory.h"
+#include "object.h"
 
-void initChunk(Chunk *chunk) {
+void initChunk(VM *vm, Chunk *chunk) {
 	chunk->count = 0;
 	chunk->capacity = 0;
 	chunk->code = NULL;
 	chunk->lines = NULL;
-	initValueArray(&chunk->constants);
-}
-
-void freeChunk(VM *vm, Chunk *chunk) {
-	FREE_ARRAY(uint32_t, chunk->code, chunk->capacity);
-	FREE_ARRAY(size_t, chunk->lines, chunk->capacity);
-	freeValueArray(vm, &chunk->constants);
-	initChunk(chunk);
+	chunk->constants = NULL;	// For GC
+	chunk->constants = newArray(vm, 0);
 }
 
 size_t writeChunk(VM *vm, Chunk *chunk, uint32_t opcode, size_t line) {
@@ -34,7 +29,7 @@ size_t writeChunk(VM *vm, Chunk *chunk, uint32_t opcode, size_t line) {
 
 size_t addConstant(VM *vm, Chunk *chunk, Value value) {
 	vm->temp4GC = value;
-	writeValueArray(vm, &chunk->constants, value);
+	writeValueArray(vm, chunk->constants, value);
 	vm->temp4GC = NIL_VAL;
-	return chunk->constants.count - 1;
+	return chunk->constants->count - 1;
 }

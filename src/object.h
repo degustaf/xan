@@ -15,6 +15,7 @@
 #define IS_CLASS(value)        isObjType(value, OBJ_CLASS)
 #define IS_INSTANCE(value)     isObjType(value, OBJ_INSTANCE)
 #define IS_BOUND_METHOD(value) isObjType(value, OBJ_BOUND_METHOD)
+#define IS_ARRAY(value)        isObjType(value, OBJ_ARRAY)
 
 #define AS_FUNCTION(value)     ((ObjFunction*)AS_OBJ(value))
 #define AS_CLOSURE(value)      ((ObjClosure*)AS_OBJ(value))
@@ -24,6 +25,7 @@
 #define AS_CLASS(value)        ((ObjClass*)AS_OBJ(value))
 #define AS_INSTANCE(value)     ((ObjInstance*)AS_OBJ(value))
 #define AS_BOUND_METHOD(value) ((ObjBoundMethod*)AS_OBJ(value))
+#define AS_ARRAY(value)        ((ObjArray*)AS_OBJ(value))
 
 ObjFunction *newFunction(VM *vm, size_t uvCount);
 ObjUpvalue *newUpvalue(VM *vm, Value *slot);
@@ -33,6 +35,7 @@ ObjClass *newClass(VM *vm, ObjString *name);
 ObjClass *copyClass(VM *vm, ObjClass *klass);
 ObjInstance *newInstance(VM *vm, ObjClass *klass);
 ObjNative *newNative(VM *vm, NativeFn function);
+ObjArray *newArray(VM *vm, size_t count);
 ObjString *takeString(char *chars, size_t length, VM *vm);
 ObjString *copyString(const char *chars, size_t length, VM *vm);
 void fprintObject(FILE *restrict stream, Value value);

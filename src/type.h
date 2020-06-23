@@ -19,6 +19,7 @@
 	X(CLOSURE), \
 	X(UPVALUE), \
 	X(CLASS), \
+	X(ARRAY), \
 	X(INSTANCE), \
 	X(BOUND_METHOD),
 
@@ -60,10 +61,11 @@ typedef struct {
 } Value;
 
 typedef struct {
+	Obj obj;
 	size_t capacity;
 	size_t count;
 	Value *values;
-} ValueArray;
+} ObjArray;
 
 // TODO turn chars into a flexible array member to optimize by minimizing allocations.
 typedef struct sObjString {
@@ -78,7 +80,7 @@ typedef struct {
 	size_t capacity;
 	uint32_t *code;
 	size_t *lines;
-	ValueArray constants;
+	ObjArray *constants;
 } Chunk;
 
 typedef struct {

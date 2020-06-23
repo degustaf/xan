@@ -27,7 +27,9 @@ ObjFunction *newFunction(VM *vm, size_t uvCount) {
 	f->uvCount = uvCount;
 	f->stackUsed = 0;
 	f->name = NULL;
-	initChunk(&f->chunk);
+	vm->temp4GC = OBJ_VAL(f);
+	initChunk(vm, &f->chunk);
+	vm->temp4GC = NIL_VAL;
 	return f;
 }
 
@@ -77,12 +79,37 @@ ObjNative *newNative(VM *vm, NativeFn function) {
 	return native;
 }
 
+ObjArray *newArray(VM *vm, size_t count) {
+	ObjArray *array = ALLOCATE_OBJ(ObjArray, OBJ_ARRAY);
+	array->count = 0;
+	array->capacity = 0;
+	array->values = NULL;
+	array->values = GROW_ARRAY(array->values, Value, 0, count);
+	array->count = count;
+	return array;
+}
+
 static void fprintFunction(FILE *restrict stream, ObjFunction *f) {
 	if(f->name == NULL) {
 		fprintf(stream, "<script>");
 	} else {
 		fprintf(stream, "<fn %s>", f->name->chars);
 	}
+}
+
+static void fprintArray(FILE *restrict stream, ObjArray *array) {
+	if(array->count == 0) {
+		fprintf(stream, "[]");
+		return;
+	}
+
+	fprintf(stream, "[");
+	fprintValue(stream, array->values[0]);
+	for(size_t i = 1; i < array->count; i++) {
+		fprintf(stream, ", ");
+		fprintValue(stream, array->values[i]);
+	}
+	fprintf(stream, "]");
 }
 
 static ObjString* allocateString(char *chars, size_t length, uint32_t hash, VM *vm) {
@@ -155,6 +182,9 @@ void fprintObject(FILE *restrict stream, Value value) {
 			break;
 		case OBJ_UPVALUE:
 			fprintf(stream, "upvalue");
+			break;
+		case OBJ_ARRAY:
+			fprintArray(stream, AS_ARRAY(value));
 			break;
 	}
 }

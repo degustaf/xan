@@ -15,13 +15,7 @@ bool valuesEqual(Value a, Value b) {
 	return false;
 }
 
-void initValueArray(ValueArray *array) {
-	array->values = NULL;
-	array->capacity = 0;
-	array->count = 0;
-}
-
-void writeValueArray(VM *vm, ValueArray *array, Value value) {
+void writeValueArray(VM *vm, ObjArray *array, Value value) {
 	if(array->capacity < array->count + 1) {
 		size_t oldCapacity = array->capacity;
 		array->capacity = GROW_CAPACITY(oldCapacity);
@@ -30,11 +24,6 @@ void writeValueArray(VM *vm, ValueArray *array, Value value) {
 
 	array->values[array->count] = value;
 	array->count++;
-}
-
-void freeValueArray(VM *vm, ValueArray *array) {
-	FREE_ARRAY(Value, array->values, array->capacity);
-	initValueArray(array);
 }
 
 void fprintValue(FILE *restrict stream, Value value) {

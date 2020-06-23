@@ -801,9 +801,11 @@ static Compiler* initCompiler(Parser *p, Compiler *compiler, FunctionType type) 
 	compiler->arity = 0;
 	compiler->uvCount = 0;
 	compiler->name = NULL;
-	initChunk(&compiler->chunk);
+	initChunk(p->vm, &compiler->chunk);
 	if(type != TYPE_SCRIPT) {
+		p->vm->temp4GC = OBJ_VAL(compiler->chunk.constants);
 		compiler->name = copyString(p->previous.start, p->previous.length, p->vm);
+		p->vm->temp4GC = NIL_VAL;
 	}
 	compiler->pendingJumpList = NO_JUMP;
 	compiler->nextReg = compiler->actVar = compiler->maxReg = 0;
@@ -1020,7 +1022,7 @@ static void call(Parser *p, expressionDescription *e) {
 	PRINT_FUNCTION;
 	if(!p->hadError)
 		exprNextReg(p, e);
-	Reg nargs = argumentList(p, e);
+	argumentList(p, e);
 }
 
 static void number(Parser *p, expressionDescription *e) {
@@ -1033,6 +1035,32 @@ static void number(Parser *p, expressionDescription *e) {
 #endif /* DEBUG_EXPRESSION_DESCRIPTION */
 	e->u.v = NUMBER_VAL(value);
 	e->true_jump = e->false_jump = NO_JUMP;
+}
+
+static void array(Parser *p, expressionDescription *e) {
+	ObjArray *array = NULL;
+	size_t count = 0;
+	Reg nextReg = p->currentCompiler->nextReg;
+	size_t ins_location = emit_AD(p, OP_NEW_ARRAY, nextReg, 0);
+	exprInit(e, NONRELOC_EXTYPE, nextReg);
+	regReserve(p->currentCompiler, 1);
+	nextReg++;
+
+	while(match(p, TOKEN_COMMA)) {
+		// TODO
+	}
+	consume(p, TOKEN_RIGHT_BRACKET, "Expect ']' after array literal.");
+
+	if(nextReg == currentChunk(p->currentCompiler)->count - 1) {
+		e->u.s.info = ins_location;
+		regReserve(p->currentCompiler, -1);
+		e->type = RELOC_EXTYPE;
+	}
+	if(array == NULL) {
+		setbc_d(&currentChunk(p->currentCompiler)->code[ins_location], count);
+	} else {
+		// TODO
+	}
 }
 
 static void makeStringConstant(Parser *p, expressionDescription *e, const char *s, size_t length) {
@@ -1219,6 +1247,9 @@ static void primaryExpression(Parser *p, expressionDescription *e) {
 			break;
 		case TOKEN_NUMBER:
 			number(p, e);
+			break;
+		case TOKEN_LEFT_BRACKET:
+			array(p, e);
 			break;
 		case TOKEN_FALSE:
 		case TOKEN_TRUE:
@@ -1446,7 +1477,8 @@ static void block(Parser *p) {
 static void function(Parser *p, expressionDescription *e, FunctionType type) {
 	PRINT_FUNCTION;
 	Compiler c;
-	p->vm->currentCompiler = p->currentCompiler = initCompiler(p, &c, type);
+	p->vm->currentCompiler = &c;
+	p->currentCompiler = initCompiler(p, &c, type);
 	beginScope(&c);
 
 	// Compile parameters.

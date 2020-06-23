@@ -52,6 +52,7 @@ typedef enum {
 	// OP_INVOKE,			// Registers: M,N,O,P
 	OP_INHERIT,				// Registers: A,D
 	OP_GET_SUPER,			// Registers: A,B,C
+	OP_NEW_ARRAY,			// Registers: A,D
 } ByteCode;
 
 #define COMMA ,
@@ -110,8 +111,7 @@ static inline void setbc_d(uint32_t *p, uint16_t x) {
 #define setbc_b(p, x)	setbc(p, (x), 2)
 #define setbc_c(p, x)	setbc(p, (x), 3)
 
-void initChunk(Chunk *chunk);
-void freeChunk(VM *vm, Chunk *chunk);
+void initChunk(VM *vm, Chunk *chunk);
 size_t writeChunk(VM *vm, Chunk *chunk, uint32_t opcode, size_t line);
 size_t addConstant(VM *vm, Chunk *chunk, Value value);
 

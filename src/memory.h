@@ -25,5 +25,6 @@
 void* reallocate(VM *vm, void* previous, size_t oldSize, size_t newSize);
 void collectGarbage(VM *vm);
 void freeObjects(VM *vm);
+void freeChunk(VM *vm, Chunk *chunk);
 
 #endif /* XAN_MEMORY_H */
