@@ -200,6 +200,15 @@ void disassembleInstruction(Chunk* chunk, size_t offset) {
 		case OP_NEW_ARRAY:
 			InstructionAD("OP_NEW_ARRAY", bytecode);
 			break;
+		case OP_DUPLICATE_ARRAY:
+			InstructionAD("OP_DUPLICATE_ARRAY", bytecode);
+			break;
+		case OP_GET_SUBSCRIPT:
+			InstructionABC("OP_GET_SUBSCRIPT", bytecode);
+			break;
+		case OP_SET_SUBSCRIPT:
+			InstructionABC("OP_SET_SUBSCRIPT", bytecode);
+			break;
 		default:
 			printf("Unknown opcode %d\n", OP(bytecode));
 			return;

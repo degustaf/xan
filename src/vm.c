@@ -21,7 +21,8 @@ static void resetStack(VM *vm) {
 }
 
 static bool isFalsey(Value v) {
-	return IS_NIL(v) || (IS_BOOL(v) && !AS_BOOL(v));
+	return IS_NIL(v) || (IS_BOOL(v) && !AS_BOOL(v))
+					 || (IS_ARRAY(v) && AS_ARRAY(v)->count == 0);
 }
 
 static Value concatenate(VM *vm, ObjString *b, ObjString *c) {
@@ -144,7 +145,6 @@ static bool call(VM *vm, ObjClosure *function, Value *base, Reg argCount, Reg re
 	}
 	if(base + 1 + function->f->stackUsed > vm->stackLast) {
 		size_t base_index = base - vm->stack;
-		// prinf("base = %x\tstack = 
 		growStack(vm, base_index + function->f->stackUsed + 2);
 		base = vm->stack + base_index;
 	}
@@ -497,8 +497,55 @@ OP_JUMP:
 					return INTERPRET_RUNTIME_ERROR;
 				break;
 			}
-			case OP_NEW_ARRAY: {
+			case OP_NEW_ARRAY:
 				frame->slots[RA(bytecode)] = OBJ_VAL(newArray(vm, RD(bytecode)));
+				break;
+			case OP_DUPLICATE_ARRAY: {
+				ObjArray *t = duplicateArray(vm, AS_ARRAY(frame->c->f->chunk.constants->values[RD(bytecode)]));
+				frame->slots[RA(bytecode)] = OBJ_VAL(t);
+				break;
+			}
+			case OP_GET_SUBSCRIPT: {
+				Value v = frame->slots[RB(bytecode)];
+				if(!IS_ARRAY(v)) {
+					runtimeError(vm, "Only arrays can be subscripted.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				ObjArray *a = AS_ARRAY(v);
+				v = frame->slots[RC(bytecode)];
+				if(!IS_NUMBER(v)) {
+					runtimeError(vm, "Arrays can only be subscripted by numbers.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				double n = AS_NUMBER(v);
+				if(n != (int)n) {
+					runtimeError(vm, "Subscript must be an integer.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				 if(getArray(vm, a, (int)n, &frame->slots[RA(bytecode)])) {
+					 runtimeError(vm, "Subscript out of bounds.");
+					 return INTERPRET_RUNTIME_ERROR;
+				 }
+				break;
+			}
+			case OP_SET_SUBSCRIPT: {
+				Value v = frame->slots[RB(bytecode)];
+				if(!IS_ARRAY(v)) {
+					runtimeError(vm, "Only arrays can be subscripted.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				ObjArray *a = AS_ARRAY(v);
+				v = frame->slots[RC(bytecode)];
+				if(!IS_NUMBER(v)) {
+					runtimeError(vm, "Arrays can only be subscripted by numbers.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				double n = AS_NUMBER(v);
+				if(n != (int)n) {
+					runtimeError(vm, "Subscript must be an integer.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				setArray(vm, a, (int)n, frame->slots[RA(bytecode)]);
 				break;
 			}
 			default:

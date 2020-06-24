@@ -62,6 +62,7 @@ typedef enum {
 	JUMP_EXTYPE,		//10// u.s.info is instruction number.
 	CALL_EXTYPE,			// u.s.info is instruction number, aux is base register.
 	INDEXED_EXTYPE,			// u.s.info is stack register, u.s.aux is key register.
+	SUBSCRIPT_EXTYPE,		// u.s.info is stack register, u.s.aux is key register.
 	VOID_EXTYPE,
 } expressionType;
 
@@ -86,6 +87,10 @@ typedef struct {
 	OP_position true_jump;
 	OP_position false_jump;
 } expressionDescription;
+
+#define ExprHasJump(e)				((e)->true_jump != (e)->false_jump)
+#define ExprIsConstant(e)			((e)->type <= NUMBER_EXTYPE)
+#define ExprIsConstantHasNoJump(e)	(ExprIsConstant(e) && !ExprHasJump(e))
 
 #ifdef DEBUG_PARSER
 static void printExpr(FILE *restrict stream, expressionDescription *e) {
@@ -345,10 +350,11 @@ static void exprDischarge(Parser *p, expressionDescription *e) {
 			e->u.s.info = emit_AD(p, OP_GET_GLOBAL, 0, e->u.s.info);
 			e->type = RELOC_EXTYPE;
 			return;
-		case INDEXED_EXTYPE: {
+		case INDEXED_EXTYPE: 
+		case SUBSCRIPT_EXTYPE: {
 			Reg rkey = e->u.s.aux;
 			regFree(p->currentCompiler, rkey);
-			uint32_t ins = OP_ABC(OP_GET_PROPERTY, 0, (Reg)e->u.s.info, rkey);
+			uint32_t ins = OP_ABC(e->type == INDEXED_EXTYPE ? OP_GET_PROPERTY : OP_GET_SUBSCRIPT, 0, (Reg)e->u.s.info, rkey);
 			regFree(p->currentCompiler, (Reg)e->u.s.info);
 			e->u.s.info = emitBytecode(p, ins);
 			e->type = RELOC_EXTYPE;
@@ -717,12 +723,12 @@ static void emit_store(Parser *p, expressionDescription *variable, expressionDes
 		Reg r = exprAnyReg(p, e);
 		emit_AD(p, OP_SET_GLOBAL, r, variable->u.s.info);
 	} else {
-		assert(variable->type == INDEXED_EXTYPE);
+		assert((variable->type == INDEXED_EXTYPE) || (variable->type == SUBSCRIPT_EXTYPE));
 		Reg ra = exprAnyReg(p, e);
 		Reg rc = variable->u.s.aux;
 		if((e->type == NONRELOC_EXTYPE) && (ra >= p->currentCompiler->actVar) && (rc >= ra))
 			regFree(p->currentCompiler, rc);
-		emit_ABC(p, OP_SET_PROPERTY, ra, variable->u.s.info, rc);
+		emit_ABC(p, variable->type == INDEXED_EXTYPE ? OP_SET_PROPERTY : OP_SET_SUBSCRIPT, ra, variable->u.s.info, rc);
 		variable->u.s.info = ra;
 		variable->type = NONRELOC_EXTYPE;
 		return;
@@ -933,7 +939,7 @@ static void assign(Parser *p, expressionDescription *e) {
 	PRINT_FUNCTION;
 	printExpr(stderr, e);
 
-	if((e->type != NONRELOC_EXTYPE && e->type != GLOBAL_EXTYPE && e->type != LOCAL_EXTYPE && e->type != UPVAL_EXTYPE && e->type != INDEXED_EXTYPE) || !e->assignable) {
+	if((e->type != NONRELOC_EXTYPE && e->type != GLOBAL_EXTYPE && e->type != LOCAL_EXTYPE && e->type != UPVAL_EXTYPE && e->type != INDEXED_EXTYPE && e->type != SUBSCRIPT_EXTYPE) || !e->assignable) {
 		errorAtPrevious(p, "Invalid assignment target.");
 		return;
 	}
@@ -1037,30 +1043,71 @@ static void number(Parser *p, expressionDescription *e) {
 	e->true_jump = e->false_jump = NO_JUMP;
 }
 
+static void expressionIndexed(Parser *p, expressionType type, expressionDescription *e, expressionDescription *k) {
+	PRINT_FUNCTION;
+	e->type = type;
+	e->u.s.aux = exprAnyReg(p, k);
+	e->assignable = true;
+}
+
 static void array(Parser *p, expressionDescription *e) {
+	PRINT_FUNCTION;
 	ObjArray *array = NULL;
 	size_t count = 0;
+	bool vcall = false;		// Can this be removed?
 	Reg nextReg = p->currentCompiler->nextReg;
 	size_t ins_location = emit_AD(p, OP_NEW_ARRAY, nextReg, 0);
 	exprInit(e, NONRELOC_EXTYPE, nextReg);
 	regReserve(p->currentCompiler, 1);
 	nextReg++;
 
-	while(match(p, TOKEN_COMMA)) {
-		// TODO
+	if(!match(p, TOKEN_RIGHT_BRACKET)) {
+		do {
+			expressionDescription val;
+			vcall = true;
+
+			expression(p, &val);
+
+			if(ExprIsConstantHasNoJump(&val)) {
+				if(array == NULL) {
+					array = newArray(p->vm, count + 1);
+					uint16_t constIdx = makeConstant(p, OBJ_VAL(array));
+					currentChunk(p->currentCompiler)->code[ins_location] =
+						OP_AD(OP_DUPLICATE_ARRAY, nextReg - 1, constIdx);
+				}
+				vcall = false;
+				setArray(p->vm, array, count, val.u.v);
+			} else {
+				if(val.type != CALL_EXTYPE) {
+					exprAnyReg(p, &val);
+					vcall = false;
+				}
+				expressionDescription key;
+				exprInit(&key, NUMBER_EXTYPE, 0);
+				key.u.v = NUMBER_VAL(count);
+				expressionIndexed(p, SUBSCRIPT_EXTYPE, e, &key);
+				emit_store(p, e, &val);
+				exprFree(p->currentCompiler, &val);
+				exprInit(e, NONRELOC_EXTYPE, nextReg - 1);
+			}
+			count++;
+			// p->currentCompiler->nextReg = nextReg;
+		} while(match(p, TOKEN_COMMA));
+
+		consume(p, TOKEN_RIGHT_BRACKET, "Expect ']' after array literal.");
 	}
-	consume(p, TOKEN_RIGHT_BRACKET, "Expect ']' after array literal.");
 
 	if(nextReg == currentChunk(p->currentCompiler)->count - 1) {
 		e->u.s.info = ins_location;
 		regReserve(p->currentCompiler, -1);
 		e->type = RELOC_EXTYPE;
-	}
-	if(array == NULL) {
-		setbc_d(&currentChunk(p->currentCompiler)->code[ins_location], count);
 	} else {
-		// TODO
+		assert(e->type == NONRELOC_EXTYPE);
+		// We might need to set this.
 	}
+
+	if(array == NULL)
+		setbc_d(&currentChunk(p->currentCompiler)->code[ins_location], count);
 }
 
 static void makeStringConstant(Parser *p, expressionDescription *e, const char *s, size_t length) {
@@ -1081,20 +1128,23 @@ static void string(Parser *p, expressionDescription *e) {
 
 static void primaryExpression(Parser *p, expressionDescription *e);
 
-static void expressionIndexed(Parser *p, expressionDescription *e, expressionDescription *k) {
-	PRINT_FUNCTION;
-	e->type = INDEXED_EXTYPE;
-	e->u.s.aux = exprAnyReg(p, k);
-	e->assignable = true;
-}
-
 static void dot(Parser *p, expressionDescription *v) {
 	PRINT_FUNCTION;
 	consume(p, TOKEN_IDENTIFIER, "Expect property name after '.'.");
 	expressionDescription key;
 	exprAnyReg(p, v);
 	makeStringConstant(p, &key, p->previous.start, p->previous.length);
-	expressionIndexed(p, v, &key);
+	expressionIndexed(p, INDEXED_EXTYPE, v, &key);
+}
+
+static void subscript(Parser *p, expressionDescription *e) {
+	expressionDescription idx;
+	exprAnyReg(p, e);
+	expression(p, &idx);
+	expr_toval(p, &idx);
+	consume(p, TOKEN_RIGHT_BRACKET, "");
+
+	expressionIndexed(p, SUBSCRIPT_EXTYPE, e, &idx);
 }
 
 static void unary(Parser *p, expressionDescription *e) {
@@ -1265,6 +1315,8 @@ static void primaryExpression(Parser *p, expressionDescription *e) {
 			call(p, e);
 		} else if(match(p, TOKEN_DOT)) {
 			dot(p, e);
+		} else if(match(p, TOKEN_LEFT_BRACKET)) {
+			subscript(p, e);
 		} else {
 			break;
 		}

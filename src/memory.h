@@ -1,6 +1,7 @@
 #ifndef XAN_MEMORY_H
 #define XAN_MEMORY_H
 
+#include <limits.h>
 #include <stddef.h>
 
 #include "vm.h"
@@ -21,6 +22,14 @@
 	reallocate(vm, pointer, sizeof(type) * (oldCount), 0)
 
 #define isWhite(o) (!((Obj*)(o))->isMarked)
+
+static inline size_t round_up_pow_2(size_t n) {
+	n--;
+	for(size_t i = 1; i < sizeof(size_t) * CHAR_BIT; i <<= 1)
+		n |= n >> i;
+	n++;
+	return n;
+}
 
 void* reallocate(VM *vm, void* previous, size_t oldSize, size_t newSize);
 void collectGarbage(VM *vm);

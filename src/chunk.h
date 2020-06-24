@@ -52,7 +52,10 @@ typedef enum {
 	// OP_INVOKE,			// Registers: M,N,O,P
 	OP_INHERIT,				// Registers: A,D
 	OP_GET_SUPER,			// Registers: A,B,C
-	OP_NEW_ARRAY,			// Registers: A,D
+	OP_NEW_ARRAY,			// Registers: A,D		// 35
+	OP_DUPLICATE_ARRAY,		// Registers: A,D
+	OP_GET_SUBSCRIPT,		// Registers: A,B,C
+	OP_SET_SUBSCRIPT,		// Registers: A,B,C
 } ByteCode;
 
 #define COMMA ,

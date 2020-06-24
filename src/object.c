@@ -84,9 +84,45 @@ ObjArray *newArray(VM *vm, size_t count) {
 	array->count = 0;
 	array->capacity = 0;
 	array->values = NULL;
-	array->values = GROW_ARRAY(array->values, Value, 0, count);
-	array->count = count;
+	if(count) {
+		size_t capacity = round_up_pow_2(count);
+		array->values = GROW_ARRAY(array->values, Value, 0, capacity);
+		array->count = count;
+		array->capacity = capacity;
+	}
 	return array;
+}
+
+ObjArray *duplicateArray(VM *vm, ObjArray *source) {
+	ObjArray *dest = newArray(vm, source->count);
+	for(size_t i=0; i<source->count; i++)
+		dest->values[i] = source->values[i];
+	return dest;
+}
+
+void setArray(VM *vm, ObjArray *array, int idx, Value v) {
+	assert(idx >= 0);
+	if((size_t)idx >= array->capacity) {
+		size_t capacity = GROW_CAPACITY(round_up_pow_2(idx));
+		array->values = GROW_ARRAY(array->values, Value, array->capacity, capacity);
+		array->capacity = capacity;
+	}
+
+	for(size_t i = array->count; i < (size_t)idx; i++)
+		array->values[i] = NIL_VAL;
+
+	array->values[idx] = v;
+	if((size_t)idx >= array->count)
+		array->count = (size_t)idx + 1;
+
+}
+
+bool getArray(VM *vm, ObjArray *array, int idx, Value *ret) {
+	if((idx < 0) || (idx >= array->count))
+		return true;
+
+	*ret = array->values[idx];
+	return false;
 }
 
 static void fprintFunction(FILE *restrict stream, ObjFunction *f) {
