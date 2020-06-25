@@ -1,0 +1,8 @@
+var a = Array();
+print(a);	// expect: []
+
+a = Array(5);
+print(a);	// expect: [nil, nil, nil, nil, nil]
+
+a = Array(15);
+print(a);	// expect: [nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil]

@@ -12,6 +12,20 @@
 #include "debug.h"
 #endif /* DEBUG_LOG_GC */
 
+void collectGarbage(VM *vm);
+
+Obj* allocateObject(size_t size, ObjType type, VM *vm) {
+	Obj *object = (Obj*)reallocate(vm, NULL, 0, size);
+	object->type = type;
+	object->isMarked = false;
+	object->next = vm->objects;
+	vm->objects = object;
+#ifdef DEBUG_LOG_GC
+	printf("%p allocate %ld for %s\n", (void*)object, size, ObjTypeNames[type]);
+#endif /* DEBUG_LOG_GC */
+	return object;
+}
+
 void* reallocate(VM *vm, void* previous, size_t oldSize, size_t newSize) {
 	vm->bytesAllocated += newSize - oldSize;
 
@@ -50,7 +64,7 @@ static void markObject(VM *vm, Obj *o) {
 	vm->grayStack[vm->grayCount++] = o;
 }
 
-static void markValue(VM *vm, Value v) {
+void markValue(VM *vm, Value v) {
 	if(!IS_OBJ(v))
 		return;
 	markObject(vm, AS_OBJ(v));
@@ -81,7 +95,6 @@ static void markRoots(VM *vm) {
 	for(Value *slot = vm->stack; slot < vm->stackTop; slot++) {
 		markValue(vm, *slot);
 	}
-	markValue(vm, vm->temp4GC);
 	markObject(vm, (Obj*)vm->initString);
 
 	for(size_t i=0; i<vm->frameCount; i++)

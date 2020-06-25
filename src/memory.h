@@ -15,6 +15,9 @@
 	(type*)reallocate(vm, NULL, 0, sizeof(type) * (count))
 #endif /* DEBUG_LOG_GC */
 
+#define ALLOCATE_OBJ(type, objectType) \
+	(type*)allocateObject(sizeof(type), objectType, vm)
+
 #define GROW_CAPACITY(capacity) \
 	((capacity) < 8 ? 8 : (capacity) * 2)
 
@@ -31,6 +34,7 @@
 	reallocate(vm, pointer, sizeof(type) * (oldCount), 0)
 
 #define isWhite(o) (!((Obj*)(o))->isMarked)
+#define fwdWriteBarrier(vm, v) markValue(vm, v)
 
 static inline size_t round_up_pow_2(size_t n) {
 	n--;
@@ -40,8 +44,9 @@ static inline size_t round_up_pow_2(size_t n) {
 	return n;
 }
 
+Obj* allocateObject(size_t size, ObjType type, VM *vm);
 void* reallocate(VM *vm, void* previous, size_t oldSize, size_t newSize);
-void collectGarbage(VM *vm);
+void markValue(VM *vm, Value v);
 void freeObjects(VM *vm);
 void freeChunk(VM *vm, Chunk *chunk);
 

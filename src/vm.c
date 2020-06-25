@@ -8,6 +8,7 @@
 #include <string.h>
 #include <time.h>
 
+#include "array.h"
 #include "memory.h"
 #include "parse.h"
 
@@ -36,11 +37,11 @@ static Value concatenate(VM *vm, ObjString *b, ObjString *c) {
 	return OBJ_VAL(result);
 }
 
-static Value clockNative(__attribute__((unused))int argCount, __attribute__((unused))Value *args) {
+static Value clockNative(__attribute__((unused))VM *vm, __attribute__((unused))int argCount, __attribute__((unused))Value *args) {
 	return NUMBER_VAL((double)clock() / CLOCKS_PER_SEC);
 }
 
-static Value printNative(__attribute__((unused))int argCount, Value *args) {
+static Value printNative(__attribute__((unused))VM *vm, __attribute__((unused))int argCount, Value *args) {
 	// if(argCount != 1) {		// TODO add error handling to native functions.
 	// 	runtimeError(vm, "Expected 1 argument but got %d.", argCount);
 	// 	return NIL_VAL;
@@ -65,7 +66,6 @@ void initVM(VM *vm) {
 	vm->currentCompiler = NULL;
 	vm->bytesAllocated = 0;
 	vm->nextGC = 1024 * 1024;
-	vm->temp4GC = NIL_VAL;
 
 	initTable(&vm->strings);
 	initTable(&vm->globals);
@@ -85,6 +85,7 @@ void initVM(VM *vm) {
 	vm->stackTop = vm->stack + 2;
 	defineNative(vm, 0, "clock", clockNative);
 	defineNative(vm, 0, "print", printNative);
+	defineNativeClass(vm, &arrayDef);
 }
 
 void freeVM(VM *vm) {
@@ -169,27 +170,34 @@ static bool callValue(VM *vm, Value *callee, Reg retCount, Reg argCount) {
 					return call(vm, (ObjClosure*)bound->method, callee, argCount, retCount);
 				assert(bound->method->type == OBJ_NATIVE);
 				NativeFn native = ((ObjNative*)bound->method)->function;
-				Value result = native(argCount, callee+1);
+				Value result = native(vm, argCount, callee+1);
 				*callee = result;
 				return true;
 			}
 			case OBJ_CLASS: {
 				ObjClass *klass = AS_CLASS(*callee);
-				*callee = OBJ_VAL(newInstance(vm, klass));
 				Value initializer;
 				if(tableGet(&klass->methods, vm->initString, &initializer)) {
+					if(IS_NATIVE(initializer)) {
+						*callee = initializer;
+						goto native;
+					}
+					assert(IS_CLOSURE(initializer));
+					*callee = OBJ_VAL(newInstance(vm, klass));
 					return call(vm, AS_CLOSURE(initializer), callee, argCount, retCount);
 				} else if(argCount) {
 					runtimeError(vm, "Expected 0 arguments but got %d.", argCount);
 					return false;
 				}
+				*callee = OBJ_VAL(newInstance(vm, klass));
 				return true;
 			}
 			case OBJ_CLOSURE:
 				return call(vm, AS_CLOSURE(*callee), callee, argCount, retCount);
+native:
 			case OBJ_NATIVE: {
 				NativeFn native = AS_NATIVE(*callee);
-				Value result = native(argCount, callee+1);
+				Value result = native(vm, argCount, callee+1);
 				*callee = result;
 				return true;
 			}
@@ -237,7 +245,7 @@ static bool invokeMethod(VM *vm, Value *slot, ObjString *name, Reg retCount, Reg
 		return call(vm, (ObjClosure*)bound->method, slot, argCount, retCount);
 	assert(bound->method->type == OBJ_NATIVE);
 	NativeFn native = ((ObjNative*)bound->method)->function;
-	Value result = native(argCount, slot+1);
+	Value result = native(vm, argCount, slot+1);
 	*slot = result;
 	return true;
 
@@ -422,7 +430,7 @@ OP_JUMP:
 			case OP_MOV:
 				frame->slots[RA(bytecode)] = frame->slots[(int16_t)RD(bytecode)];
 				break;
-			case OP_CALL:
+			case OP_CALL:	// RA = func/dest reg; RB = retCount; RC = argCount
 				if(!callValue(vm, &frame->slots[RA(bytecode)], RB(bytecode), RC(bytecode)))
 					return INTERPRET_RUNTIME_ERROR;
 				frame = &vm->frames[vm->frameCount-1];
@@ -455,7 +463,7 @@ OP_JUMP:
 				frame->slots[RA(bytecode)] = OBJ_VAL(klass);
 				break;
 			}
-			case OP_GET_PROPERTY: {
+			case OP_GET_PROPERTY: {	// RA = dest reg; RB = object reg; RC = property reg
 				int16_t rb = ((int16_t)(Reg)(RB(bytecode) + 1))-1;
 				Value v = frame->slots[rb];
 				if(!IS_INSTANCE(v)) {
@@ -538,7 +546,7 @@ OP_JUMP:
 					runtimeError(vm, "Subscript must be an integer.");
 					return INTERPRET_RUNTIME_ERROR;
 				}
-				 if(getArray(vm, a, (int)n, &frame->slots[RA(bytecode)])) {
+				 if(getArray(a, (int)n, &frame->slots[RA(bytecode)])) {
 					 runtimeError(vm, "Subscript out of bounds.");
 					 return INTERPRET_RUNTIME_ERROR;
 				 }

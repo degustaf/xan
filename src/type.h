@@ -112,13 +112,6 @@ typedef struct {
 	uint16_t uv[];
 } ObjFunction;
 
-typedef Value (*NativeFn)(int argCount, Value *args);
-
-typedef struct {
-	Obj obj;
-	NativeFn function;
-} ObjNative;
-
 #define UV_IS_LOCAL 0x100
 
 typedef struct sUpvalue {
@@ -134,7 +127,6 @@ typedef struct {
 	ObjUpvalue **upvalues;
 	size_t uvCount;
 } ObjClosure;
-
 
 struct sObjClass {
 	Obj obj;
@@ -205,16 +197,32 @@ typedef struct {
 	Compiler *currentCompiler;
 	size_t bytesAllocated;
 	size_t nextGC;
-	Value temp4GC;
 	size_t grayCount;
 	size_t grayCapacity;
 	Obj** grayStack;
 } VM;
+
+typedef Value (*NativeFn)(VM *vm, int argCount, Value *args);
+
+typedef struct {
+	Obj obj;
+	NativeFn function;
+} ObjNative;
 
 typedef enum {
 	INTERPRET_OK,
 	INTERPRET_COMPILE_ERROR,
 	INTERPRET_RUNTIME_ERROR,
 } InterpretResult;
+
+typedef struct {
+	const char *const name;
+	NativeFn method;
+} NativeDef;
+
+typedef struct {
+	const char *const name;
+	NativeDef *methods;
+} classDef;
 
 #endif /* XAN_TYPE_H */

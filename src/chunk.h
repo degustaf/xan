@@ -73,7 +73,7 @@ static inline Value getPrimitive(primitive p) {
 		case PRIM_NIL:   return NIL_VAL;
 		case PRIM_TRUE:  return BOOL_VAL(true);
 		case PRIM_FALSE: return BOOL_VAL(false);
-		default: assert(false);
+		default: assert(false); return OBJ_VAL(NULL);
 	}
 }
 

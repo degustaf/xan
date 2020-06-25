@@ -1,8 +1,6 @@
 class P {
 	init(n) {
-		var a = [];
-		a[n-1] = nil;
-		this.v = a;
+		this.v = Array(n);
 	}
 
 	swap(i, j) {

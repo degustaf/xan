@@ -1,0 +1,38 @@
+#include "array.h"
+
+#include "memory.h"
+
+ObjArray *newArray(VM *vm, size_t count) {
+	ObjArray *array = ALLOCATE_OBJ(ObjArray, OBJ_ARRAY);
+	array->count = 0;
+	array->capacity = 0;
+	array->values = NULL;
+	array->klass = NULL;
+	if(count) {
+		size_t capacity = round_up_pow_2(count);
+		fwdWriteBarrier(vm, OBJ_VAL(array));
+		array->values = GROW_ARRAY(array->values, Value, 0, capacity);
+		array->count = count;
+		array->capacity = capacity;
+	}
+	return array;
+}
+
+Value ArrayInit (VM *vm, int argCount, Value *args) {
+	size_t count = argCount == 0 ? 0 : (size_t)AS_NUMBER(*args);
+	ObjArray *ret = newArray(vm, count);
+	for(size_t i=0; i<ret->count; i++)
+		ret->values[i] = NIL_VAL;
+	return OBJ_VAL(ret);
+}
+
+NativeDef arrayMethods[] = {
+	{"init", &ArrayInit},
+	// {"__subscript", &ArrayInit},
+	{NULL, NULL}
+};
+
+classDef arrayDef = {
+	"Array",
+	arrayMethods
+};

@@ -5,21 +5,6 @@
 
 #include "memory.h"
 
-#define ALLOCATE_OBJ(type, objectType) \
-	(type*)allocateObject(sizeof(type), objectType, vm)
-
-static Obj* allocateObject(size_t size, ObjType type, VM *vm) {
-	Obj *object = (Obj*)reallocate(vm, NULL, 0, size);
-	object->type = type;
-	object->isMarked = false;
-	object->next = vm->objects;
-	vm->objects = object;
-#ifdef DEBUG_LOG_GC
-	printf("%p allocate %ld for %s\n", (void*)object, size, ObjTypeNames[type]);
-#endif /* DEBUG_LOG_GC */
-	return object;
-}
-
 ObjFunction *newFunction(VM *vm, size_t uvCount) {
 	ObjFunction *f = (ObjFunction*)allocateObject(sizeof(*f) + uvCount * sizeof(uint16_t), OBJ_FUNCTION, vm);
 
@@ -27,10 +12,8 @@ ObjFunction *newFunction(VM *vm, size_t uvCount) {
 	f->uvCount = uvCount;
 	f->stackUsed = 0;
 	f->name = NULL;
-	vm->temp4GC = OBJ_VAL(f);
+	fwdWriteBarrier(vm, OBJ_VAL(f));
 	initChunk(vm, &f->chunk);
-	assert(!IS_NIL(vm->temp4GC));
-	vm->temp4GC = NIL_VAL;
 	return f;
 }
 
@@ -69,6 +52,30 @@ ObjClass *newClass(VM *vm, ObjString *name) {
 	return klass;
 }
 
+void defineNativeClass(VM *vm, classDef *def) {
+	ObjString *name = copyString(def->name, strlen(def->name), vm);
+
+	fwdWriteBarrier(vm, OBJ_VAL(name));
+	ObjClass *klass = newClass(vm, name);
+
+	for(size_t i = 0; def->methods[i].name; i++) {
+		fwdWriteBarrier(vm, OBJ_VAL(klass));
+		name = copyString(def->methods[i].name, strlen(def->methods[i].name), vm);
+
+		fwdWriteBarrier(vm, OBJ_VAL(klass));
+		fwdWriteBarrier(vm, OBJ_VAL(name));
+		ObjNative *m = newNative(vm, def->methods[i].method);
+
+		fwdWriteBarrier(vm, OBJ_VAL(klass));
+		fwdWriteBarrier(vm, OBJ_VAL(name));
+		fwdWriteBarrier(vm, OBJ_VAL(m));
+		tableSet(vm, &klass->methods, name, OBJ_VAL(m));
+	}
+
+	fwdWriteBarrier(vm, OBJ_VAL(klass));
+	tableSet(vm, &vm->globals, klass->name, OBJ_VAL(klass));
+}
+
 ObjInstance *newInstance(VM *vm, ObjClass *klass) {
 	ObjInstance *o = ALLOCATE_OBJ(ObjInstance, OBJ_INSTANCE);
 	o->klass = klass;
@@ -82,24 +89,6 @@ ObjNative *newNative(VM *vm, NativeFn function) {
 	return native;
 }
 
-ObjArray *newArray(VM *vm, size_t count) {
-	ObjArray *array = ALLOCATE_OBJ(ObjArray, OBJ_ARRAY);
-	array->count = 0;
-	array->capacity = 0;
-	array->values = NULL;
-	array->klass = NULL;
-	if(count) {
-		size_t capacity = round_up_pow_2(count);
-		vm->temp4GC = OBJ_VAL(array);
-		array->values = GROW_ARRAY(array->values, Value, 0, capacity);
-		assert(!IS_NIL(vm->temp4GC));
-		vm->temp4GC = NIL_VAL;
-		array->count = count;
-		array->capacity = capacity;
-	}
-	return array;
-}
-
 ObjArray *duplicateArray(VM *vm, ObjArray *source) {
 	ObjArray *dest = newArray(vm, source->count);
 	for(size_t i=0; i<source->count; i++)
@@ -111,10 +100,8 @@ void setArray(VM *vm, ObjArray *array, int idx, Value v) {
 	assert(idx >= 0);
 	if((size_t)idx >= array->capacity) {
 		size_t capacity = GROW_CAPACITY(round_up_pow_2(idx));
-		vm->temp4GC = v;
+		fwdWriteBarrier(vm, v);
 		array->values = GROW_ARRAY(array->values, Value, array->capacity, capacity);
-		assert(IS_NIL(v) || !IS_NIL(vm->temp4GC));
-		vm->temp4GC = NIL_VAL;
 		array->capacity = capacity;
 	}
 
@@ -127,7 +114,7 @@ void setArray(VM *vm, ObjArray *array, int idx, Value v) {
 
 }
 
-bool getArray(VM *vm, ObjArray *array, int idx, Value *ret) {
+bool getArray(ObjArray *array, int idx, Value *ret) {
 	if((idx < 0) || ((size_t)idx >= array->count))
 		return true;
 
@@ -163,10 +150,8 @@ static ObjString* allocateString(char *chars, size_t length, uint32_t hash, VM *
 	string->length = length;
 	string->chars = chars;
 	string->hash = hash;
-	vm->temp4GC = OBJ_VAL(string);
+	fwdWriteBarrier(vm, OBJ_VAL(string));
 	tableSet(vm, &vm->strings, string, NIL_VAL);
-	assert(!IS_NIL(vm->temp4GC));
-	vm->temp4GC = NIL_VAL;
 
 	return string;
 }

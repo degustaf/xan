@@ -1,8 +1,10 @@
-#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 
 #include "../src/chunk.h"
+
+#undef NDEBUG
+#include <assert.h>
 
 #define assert_equal(a, b) if((a) != (b)) {\
 	fprintf(stderr, "Assertion that '%d' equals '%d' failed.\n", a, b);\

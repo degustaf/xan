@@ -30,9 +30,10 @@ SRCS =			$(wildcard $(PATHS)/*.c)
 USRCS =			$(wildcard $(PATHU)/*.c)
 LINK = 			$(CC)
 C_STD =			c99
-CFLAGS =		-I$(PATHS) -Wall -Wextra -pedantic -pg $(ARCH) -std=$(C_STD) -D_POSIX_C_SOURCE=200809L -O3 $(DEF)
+DEF =			-pg -g 
+CFLAGS =		-I$(PATHS) -Wall -Wextra -pedantic $(ARCH) -std=$(C_STD) -D_POSIX_C_SOURCE=200809L -O3 $(DEF)
 
-LDFLAGS =		$(ARCH) -pg
+LDFLAGS =		$(ARCH) $(DEF)
 LDLIBS =
 
 COMPILE =		$(CC) $(CFLAGS) -MT $@ -MP -MMD -MF $(PATHD)/$*.Td
