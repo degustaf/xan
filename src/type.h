@@ -60,20 +60,39 @@ typedef struct {
 	} as;
 } Value;
 
+typedef struct sObjString ObjString;
 typedef struct {
-	Obj obj;
+	ObjString *key;
+	Value value;
+} Entry;
+
+typedef struct {
+	size_t count;
+	ssize_t capacityMask;
+	Entry *entries;
+} Table;
+
+typedef struct sObjClass ObjClass;
+
+#define INSTANCE_FIELDS \
+	Obj obj; \
+	ObjClass *klass; \
+	Table fields
+
+typedef struct {
+	INSTANCE_FIELDS;
 	size_t capacity;
 	size_t count;
 	Value *values;
 } ObjArray;
 
 // TODO turn chars into a flexible array member to optimize by minimizing allocations.
-typedef struct sObjString {
+struct sObjString {
 	Obj obj;
 	size_t length;
 	uint32_t hash;
 	char *chars;
-} ObjString;
+};
 
 typedef struct {
 	size_t count;
@@ -116,33 +135,21 @@ typedef struct {
 	size_t uvCount;
 } ObjClosure;
 
-typedef struct {
-	ObjString *key;
-	Value value;
-} Entry;
 
-typedef struct {
-	size_t count;
-	ssize_t capacityMask;
-	Entry *entries;
-} Table;
-
-typedef struct sObjClass {
+struct sObjClass {
 	Obj obj;
 	ObjString *name;
 	Table methods;
-} ObjClass;
+};
 
 typedef struct {
-	Obj obj;
-	ObjClass *klass;
-	Table fields;
+	INSTANCE_FIELDS;
 } ObjInstance;
 
 typedef struct {
 	Obj obj;
 	Value receiver;
-	ObjClosure *method;
+	Obj *method;
 } ObjBoundMethod;
 
 typedef struct {

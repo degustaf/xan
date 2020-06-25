@@ -56,6 +56,7 @@ Mkfile.old
 dkms.conf
 
 # Profiling data
-perf.data
+perf.data*
+gmon.*
 before.txt
 after.txt

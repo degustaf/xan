@@ -40,5 +40,7 @@ fun tail(x, y, z) {
 }
 
 var start = clock();
-print(tail(makeList(15), makeList(10), makeList(6)).length());
+for(var i=0; i<10; i = i+1) {
+	print(tail(makeList(15), makeList(10), makeList(6)).length());
+}
 print(clock() - start);

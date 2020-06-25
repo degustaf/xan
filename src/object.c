@@ -29,6 +29,7 @@ ObjFunction *newFunction(VM *vm, size_t uvCount) {
 	f->name = NULL;
 	vm->temp4GC = OBJ_VAL(f);
 	initChunk(vm, &f->chunk);
+	assert(!IS_NIL(vm->temp4GC));
 	vm->temp4GC = NIL_VAL;
 	return f;
 }
@@ -52,10 +53,12 @@ ObjClosure *newClosure(VM *vm, ObjFunction *f) {
 	return cl;
 }
 
-ObjBoundMethod *newBoundMethod(VM *vm, Value receiver, ObjClosure *method) {
+ObjBoundMethod *newBoundMethod(VM *vm, Value receiver, Value method) {
 	ObjBoundMethod *ret = ALLOCATE_OBJ(ObjBoundMethod, OBJ_BOUND_METHOD);
 	ret->receiver = receiver;
-	ret->method = method;
+	assert(IS_OBJ(method));
+	assert(isObjType(method, OBJ_CLOSURE) || isObjType(method, OBJ_NATIVE));
+	ret->method = AS_OBJ(method);
 	return ret;
 }
 
@@ -84,9 +87,13 @@ ObjArray *newArray(VM *vm, size_t count) {
 	array->count = 0;
 	array->capacity = 0;
 	array->values = NULL;
+	array->klass = NULL;
 	if(count) {
 		size_t capacity = round_up_pow_2(count);
+		vm->temp4GC = OBJ_VAL(array);
 		array->values = GROW_ARRAY(array->values, Value, 0, capacity);
+		assert(!IS_NIL(vm->temp4GC));
+		vm->temp4GC = NIL_VAL;
 		array->count = count;
 		array->capacity = capacity;
 	}
@@ -104,7 +111,10 @@ void setArray(VM *vm, ObjArray *array, int idx, Value v) {
 	assert(idx >= 0);
 	if((size_t)idx >= array->capacity) {
 		size_t capacity = GROW_CAPACITY(round_up_pow_2(idx));
+		vm->temp4GC = v;
 		array->values = GROW_ARRAY(array->values, Value, array->capacity, capacity);
+		assert(IS_NIL(v) || !IS_NIL(vm->temp4GC));
+		vm->temp4GC = NIL_VAL;
 		array->capacity = capacity;
 	}
 
@@ -118,7 +128,7 @@ void setArray(VM *vm, ObjArray *array, int idx, Value v) {
 }
 
 bool getArray(VM *vm, ObjArray *array, int idx, Value *ret) {
-	if((idx < 0) || (idx >= array->count))
+	if((idx < 0) || ((size_t)idx >= array->count))
 		return true;
 
 	*ret = array->values[idx];
@@ -155,6 +165,7 @@ static ObjString* allocateString(char *chars, size_t length, uint32_t hash, VM *
 	string->hash = hash;
 	vm->temp4GC = OBJ_VAL(string);
 	tableSet(vm, &vm->strings, string, NIL_VAL);
+	assert(!IS_NIL(vm->temp4GC));
 	vm->temp4GC = NIL_VAL;
 
 	return string;
@@ -195,9 +206,16 @@ ObjString* copyString(const char *chars, size_t length, VM *vm) {
 
 void fprintObject(FILE *restrict stream, Value value) {
 	switch(OBJ_TYPE(value)) {
-		case OBJ_BOUND_METHOD:
-			fprintFunction(stream, AS_BOUND_METHOD(value)->method->f);
-			break;
+		case OBJ_BOUND_METHOD: {
+				Obj *method = AS_BOUND_METHOD(value)->method;
+				if(method->type == OBJ_CLOSURE) {
+					fprintFunction(stream, ((ObjClosure*)method)->f);
+					break;
+				}
+				assert(method->type == OBJ_NATIVE);
+				fprintf(stream, "<native method>");
+				break;
+			}
 		case OBJ_CLASS:
 			fprintf(stream, "%s", AS_CLASS(value)->name->chars);
 			break;

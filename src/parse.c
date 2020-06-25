@@ -798,9 +798,11 @@ static void emitReturn(Parser *p, expressionDescription *e) {
 	emitBytecode(p, OP_AD(OP_RETURN, exprAnyReg(p, e), 2));
 }
 
-static Compiler* initCompiler(Parser *p, Compiler *compiler, FunctionType type) {
+static void initCompiler(Parser *p, Compiler *compiler, FunctionType type) {
 	PRINT_FUNCTION;
 	compiler->enclosing = p->currentCompiler;
+	p->currentCompiler = compiler;
+	p->vm->currentCompiler = compiler;
 	compiler->type = type;
 	compiler->localCount = 0;
 	compiler->scopeDepth = 0;
@@ -808,11 +810,8 @@ static Compiler* initCompiler(Parser *p, Compiler *compiler, FunctionType type) 
 	compiler->uvCount = 0;
 	compiler->name = NULL;
 	initChunk(p->vm, &compiler->chunk);
-	if(type != TYPE_SCRIPT) {
-		p->vm->temp4GC = OBJ_VAL(compiler->chunk.constants);
+	if(type != TYPE_SCRIPT)
 		compiler->name = copyString(p->previous.start, p->previous.length, p->vm);
-		p->vm->temp4GC = NIL_VAL;
-	}
 	compiler->pendingJumpList = NO_JUMP;
 	compiler->nextReg = compiler->actVar = compiler->maxReg = 0;
 #ifdef DEBUG_PARSER
@@ -828,7 +827,6 @@ static Compiler* initCompiler(Parser *p, Compiler *compiler, FunctionType type) 
 		local->name.start = "";
 		local->name.length = 0;
 	}
-	return compiler;
 }
 
 static ObjFunction *endCompiler(Parser *p) {
@@ -1054,7 +1052,6 @@ static void array(Parser *p, expressionDescription *e) {
 	PRINT_FUNCTION;
 	ObjArray *array = NULL;
 	size_t count = 0;
-	bool vcall = false;		// Can this be removed?
 	Reg nextReg = p->currentCompiler->nextReg;
 	size_t ins_location = emit_AD(p, OP_NEW_ARRAY, nextReg, 0);
 	exprInit(e, NONRELOC_EXTYPE, nextReg);
@@ -1064,7 +1061,6 @@ static void array(Parser *p, expressionDescription *e) {
 	if(!match(p, TOKEN_RIGHT_BRACKET)) {
 		do {
 			expressionDescription val;
-			vcall = true;
 
 			expression(p, &val);
 
@@ -1075,13 +1071,10 @@ static void array(Parser *p, expressionDescription *e) {
 					currentChunk(p->currentCompiler)->code[ins_location] =
 						OP_AD(OP_DUPLICATE_ARRAY, nextReg - 1, constIdx);
 				}
-				vcall = false;
 				setArray(p->vm, array, count, val.u.v);
 			} else {
-				if(val.type != CALL_EXTYPE) {
+				if(val.type != CALL_EXTYPE)
 					exprAnyReg(p, &val);
-					vcall = false;
-				}
 				expressionDescription key;
 				exprInit(&key, NUMBER_EXTYPE, 0);
 				key.u.v = NUMBER_VAL(count);
@@ -1219,9 +1212,7 @@ static int16_t var_lookup(Parser *p, Compiler *c, Token *name, expressionDescrip
 			}
 		}
 	} else {
-		p->vm->temp4GC = OBJ_VAL(copyString(name->start, name->length, p->vm));
-		exprInit(e, GLOBAL_EXTYPE, makeConstant(p, p->vm->temp4GC));
-		p->vm->temp4GC = NIL_VAL;
+		exprInit(e, GLOBAL_EXTYPE, makeConstant(p, OBJ_VAL(copyString(name->start, name->length, p->vm))));
 	}
 	return -2;
 }
@@ -1257,13 +1248,11 @@ static void super_(Parser *p, expressionDescription *e) {
 
 	consume(p, TOKEN_DOT, "Expect '.' after 'super'.");
 	consume(p, TOKEN_IDENTIFIER, "Expect superclass method name.");
-	makeStringConstant(p, &key, p->previous.start, p->previous.length);
 
-	p->vm->temp4GC = key.u.v;
 	exprAnyReg(p, e);
 	exprAnyReg(p, &superKlass);
+	makeStringConstant(p, &key, p->previous.start, p->previous.length);
 	exprAnyReg(p, &key);
-	p->vm->temp4GC = NIL_VAL;
 
 	emit_ABC(p, OP_GET_SUPER, superKlass.u.s.info, e->u.s.info, key.u.s.info);
 	exprFree(p->currentCompiler, &key);
@@ -1389,9 +1378,7 @@ static void scopeVariable(Parser *p, expressionDescription *e, Token *name) {
 	PRINT_FUNCTION;
 	int r = declareVariable(p, name);
 	if(r < 0) {
-		p->vm->temp4GC = OBJ_VAL(copyString(name->start, name->length, p->vm));
-		exprInit(e, GLOBAL_EXTYPE, makeConstant(p, p->vm->temp4GC));
-		p->vm->temp4GC = NIL_VAL;
+		exprInit(e, GLOBAL_EXTYPE, makeConstant(p, OBJ_VAL(copyString(name->start, name->length, p->vm))));
 	} else {
 		exprInit(e, LOCAL_EXTYPE, r);
 		e->assignable = true;
@@ -1530,7 +1517,7 @@ static void function(Parser *p, expressionDescription *e, FunctionType type) {
 	PRINT_FUNCTION;
 	Compiler c;
 	p->vm->currentCompiler = &c;
-	p->currentCompiler = initCompiler(p, &c, type);
+	initCompiler(p, &c, type);
 	beginScope(&c);
 
 	// Compile parameters.
@@ -1555,11 +1542,8 @@ static void function(Parser *p, expressionDescription *e, FunctionType type) {
 	block(p);
 	endScope(p);
 
-	p->vm->temp4GC = NIL_VAL;
 	ObjFunction *f = endCompiler(p);
-	p->vm->temp4GC = OBJ_VAL(f);
 	exprInit(e, RELOC_EXTYPE, emit_AD(p, OP_CLOSURE, p->currentCompiler->actVar, makeConstant(p, OBJ_VAL(f))));
-	p->vm->temp4GC = NIL_VAL;
 }
 
 static void method(Parser *p, expressionDescription *klass) {
@@ -1594,9 +1578,7 @@ static void classDeclaration(Parser *p) {
 	p->currentClass = &classCompiler;
 
 	printExpr(stderr, &name);
-	p->vm->temp4GC = OBJ_VAL(copyString(classCompiler.name.start, classCompiler.name.length, p->vm));
-	exprInit(&klass, RELOC_EXTYPE, emit_AD(p, OP_CLASS, 0, makeConstant(p, p->vm->temp4GC)));
-	p->vm->temp4GC = NIL_VAL;
+	exprInit(&klass, RELOC_EXTYPE, emit_AD(p, OP_CLASS, 0, makeConstant(p, OBJ_VAL(copyString(classCompiler.name.start, classCompiler.name.length, p->vm)))));
 	exprAnyReg(p, &klass);
 	emitDefine(p, &name, &klass);
 	var_lookup(p, p->currentCompiler, &classCompiler.name, &klass, true);
@@ -1770,8 +1752,8 @@ static void initParser(Parser *p, VM *vm, Compiler *compiler, const char *source
 	p->panicMode = false;
 	p->currentCompiler = NULL;
 	p->currentClass = NULL;
-	vm->currentCompiler = compiler;
-	p->currentCompiler = initCompiler(p, compiler, TYPE_SCRIPT);
+	p->vm->currentCompiler = compiler;
+	initCompiler(p, compiler, TYPE_SCRIPT);
 }
 
 ObjFunction *parse(VM *vm, const char *source) {

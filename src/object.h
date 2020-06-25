@@ -30,7 +30,7 @@
 ObjFunction *newFunction(VM *vm, size_t uvCount);
 ObjUpvalue *newUpvalue(VM *vm, Value *slot);
 ObjClosure *newClosure(VM *vm, ObjFunction *f);
-ObjBoundMethod *newBoundMethod(VM *vm, Value receiver, ObjClosure *method);
+ObjBoundMethod *newBoundMethod(VM *vm, Value receiver, Value method);
 ObjClass *newClass(VM *vm, ObjString *name);
 ObjClass *copyClass(VM *vm, ObjClass *klass);
 ObjInstance *newInstance(VM *vm, ObjClass *klass);

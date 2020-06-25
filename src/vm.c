@@ -148,7 +148,7 @@ static bool call(VM *vm, ObjClosure *function, Value *base, Reg argCount, Reg re
 		growStack(vm, base_index + function->f->stackUsed + 2);
 		base = vm->stack + base_index;
 	}
-	if(base + function->f->stackUsed > vm->stackTop)
+	if(base + function->f->stackUsed + 1 > vm->stackTop)
 		vm->stackTop = base + function->f->stackUsed + 1;
 
 	CallFrame *frame = &vm->frames[vm->frameCount++];
@@ -165,7 +165,13 @@ static bool callValue(VM *vm, Value *callee, Reg retCount, Reg argCount) {
 			case OBJ_BOUND_METHOD: {
 				ObjBoundMethod *bound = AS_BOUND_METHOD(*callee);
 				*callee = bound->receiver;
-				return call(vm, bound->method, callee, argCount, retCount);
+				if(bound->method->type == OBJ_CLOSURE)
+					return call(vm, (ObjClosure*)bound->method, callee, argCount, retCount);
+				assert(bound->method->type == OBJ_NATIVE);
+				NativeFn native = ((ObjNative*)bound->method)->function;
+				Value result = native(argCount, callee+1);
+				*callee = result;
+				return true;
 			}
 			case OBJ_CLASS: {
 				ObjClass *klass = AS_CLASS(*callee);
@@ -203,8 +209,9 @@ static bool bindMethod(VM *vm, ObjInstance *instance, ObjClass *klass, ObjString
 		runtimeError(vm, "Undefined property '%s'.", name->chars);
 		return false;
 	}
+	assert(isObjType(method, OBJ_CLOSURE) || isObjType(method, OBJ_NATIVE));
 
-	ObjBoundMethod *bound = newBoundMethod(vm, OBJ_VAL(instance), AS_CLOSURE(method));
+	ObjBoundMethod *bound = newBoundMethod(vm, OBJ_VAL(instance), method);
 	*slot = (OBJ_VAL(bound));
 	return true;
 }
@@ -220,11 +227,20 @@ static bool invokeMethod(VM *vm, Value *slot, ObjString *name, Reg retCount, Reg
 		runtimeError(vm, "Undefined property '%s'.", name->chars);
 		return false;
 	}
+	assert(isObjType(method, OBJ_CLOSURE) || isObjType(method, OBJ_NATIVE));
 
-	ObjBoundMethod *bound = newBoundMethod(vm, OBJ_VAL(instance), AS_CLOSURE(method));
+	ObjBoundMethod *bound = newBoundMethod(vm, OBJ_VAL(instance), method);
 	*slot = (OBJ_VAL(bound));
 	*slot = bound->receiver;
-	return call(vm, bound->method, slot, argCount, retCount);
+	// return call(vm, bound->method, slot, argCount, retCount);
+	if(bound->method->type == OBJ_CLOSURE)
+		return call(vm, (ObjClosure*)bound->method, slot, argCount, retCount);
+	assert(bound->method->type == OBJ_NATIVE);
+	NativeFn native = ((ObjNative*)bound->method)->function;
+	Value result = native(argCount, slot+1);
+	*slot = result;
+	return true;
+
 }
 
 static ObjUpvalue *captureUpvalue(VM *vm, Value *local) {

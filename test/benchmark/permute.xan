@@ -1,0 +1,33 @@
+class P {
+	init(n) {
+		var a = [];
+		a[n-1] = nil;
+		this.v = a;
+	}
+
+	swap(i, j) {
+		var tmp = this.v[i];
+		this.v[i] = this.v[j];
+		this.v[j] = tmp;
+	}
+
+	permute(n) {
+		var count = 1;
+		if(n>0) {
+			var n1 = n - 1;
+			count = count + this.permute(n1);
+			for(var i=n1; i>=0; i = i - 1) {
+				this.swap(n1, i);
+				count = count + this.permute(n1);
+				this.swap(n1, i);
+			}
+		}
+		return count;
+	}
+}
+
+var start = clock();
+for(var i=0; i<100; i = i+1) {
+	print(P(6).permute(6));
+}
+print(clock() - start);

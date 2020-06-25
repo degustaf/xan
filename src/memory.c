@@ -4,6 +4,9 @@
 
 #include "object.h"
 
+#define FREE(type, pointer) \
+	reallocate(vm, pointer, sizeof(type), 0)
+
 #ifdef DEBUG_LOG_GC
 #include <stdio.h>
 #include "debug.h"
@@ -54,6 +57,7 @@ static void markValue(VM *vm, Value v) {
 }
 
 static void markArray(VM *vm, ObjArray *array) {
+	array->obj.isMarked = true;
 	for(size_t i=0; i<array->count; i++)
 		markValue(vm, array->values[i]);
 }
