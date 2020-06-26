@@ -1,0 +1,25 @@
+fun sieve(n) {
+	var primeCount = 0;
+
+	var flags = Array(n+1);
+	for(var i=0; i<=n; i = i + 1)
+		flags[i] = true;
+
+	for(var i=2; i<=n; i = i + 1) {
+		if(flags[i]) {
+			primeCount = primeCount + 1;
+			for(var j=2*i; j<=n; j = j + i)
+				flags[j] = false;
+		}
+	}
+	return primeCount;
+}
+
+var start = clock();
+for(var i=0; i<10; i = i+1) {
+	print(sieve(7));	// expect: 4
+	print(sieve(10));	// expect: 5
+	print(sieve(11));	// expect: 5
+	print(sieve(5000));	// expect: 669
+}
+print(clock() - start);

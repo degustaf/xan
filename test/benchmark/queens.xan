@@ -1,0 +1,43 @@
+class Queens {
+	init() {
+		this.filledMaxs = Array(16);
+		this.filledMins = Array(16);
+		this.filledRows = Array(8);
+		this.queenRows = Array(8);
+	}
+
+	getRowColumn(r, c) {
+		return this.filledRows[r] and this.filledMaxs[c+r] and this.freeMins[c-r+7];
+	}
+
+	setRowColumn(r, c, v) {
+		this.filledRows[r] = v;
+		this.filledMaxs[c + r] = v;
+		this.filledMins[c - r + 7] = v;
+	}
+
+	placeQueen(c) {
+		for(var r=0; r<8; r = r + 1) {
+			if(!this.getRowColumn(r, c)) {
+				this.queenRows[r] = c;
+				this.setRowColumn(r, c, true);
+
+				if(c == 7)
+					return true;
+
+				if(this.placeQueen(c+1))
+					return true;
+				this.setRowColumn(r, c, false);
+			}
+		}
+
+		return false;
+	}
+
+}
+
+var start = clock();
+for(var i = 0; i<10; i = i + 1) {
+	print(Queens().placeQueen(0));	// expect: true
+}
+print(clock() - start);
