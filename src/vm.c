@@ -581,8 +581,12 @@ OP_JUMP:
 #undef BINARY_OPVV
 #undef READ_BYTECODE
 
-InterpretResult interpret(VM *vm, const char *source) {
-	ObjFunction *script = parse(vm, source);
+InterpretResult interpret(VM *vm, const char *source, bool printCode) {
+	ObjFunction *script = parse(vm, source, printCode);
+#ifndef DEBUG_PRINT_CODE
+	if(printCode)
+		return INTERPRET_OK;
+#endif
 	if(script == NULL)
 		return INTERPRET_COMPILE_ERROR;
 

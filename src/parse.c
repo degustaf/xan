@@ -7,9 +7,7 @@
 #include <string.h>
 
 #include "memory.h"
-#ifdef DEBUG_PRINT_CODE
 #include "debug.h"
-#endif
 
 typedef struct ClassCompiler {
 	struct ClassCompiler *enclosing;
@@ -22,6 +20,7 @@ typedef struct {
 	Token previous;
 	bool hadError;
 	bool panicMode;
+	bool printCode;
 	Scanner *s;
 	VM *vm;
 
@@ -847,11 +846,9 @@ static ObjFunction *endCompiler(Parser *p) {
 	f->stackUsed = p->currentCompiler->maxReg;
 	for(size_t i=0; i<f->uvCount; i++)
 		f->uv[i] = p->currentCompiler->upvalues[i];
-#ifdef DEBUG_PRINT_CODE
-	if(!p->hadError) {
+	if(!p->hadError && p->printCode) {
 		disassembleFunction(f);
 	}
-#endif
 	p->vm->currentCompiler = p->currentCompiler = p->currentCompiler->enclosing;
 	return f;
 }
@@ -1744,22 +1741,27 @@ static void declaration(Parser *p) {
 	p->currentCompiler->nextReg = p->currentCompiler->actVar;
 }
 
-static void initParser(Parser *p, VM *vm, Compiler *compiler, const char *source) {
+static void initParser(Parser *p, VM *vm, Compiler *compiler, const char *source, bool printCode) {
 	PRINT_FUNCTION;
 	p->s = initScanner(source);
 	p->vm = vm;
 	p->hadError = false;
 	p->panicMode = false;
+#ifdef DEBUG_PRINT_CODE
+	p->printCode = true;
+#else
+	p->printCode = printCode;
+#endif
 	p->currentCompiler = NULL;
 	p->currentClass = NULL;
 	p->vm->currentCompiler = compiler;
 	initCompiler(p, compiler, TYPE_SCRIPT);
 }
 
-ObjFunction *parse(VM *vm, const char *source) {
+ObjFunction *parse(VM *vm, const char *source, bool printCode) {
 	Parser p;
 	Compiler compiler;
-	initParser(&p, vm, &compiler, source);
+	initParser(&p, vm, &compiler, source, printCode);
 
 	advance(&p);
 	while(!match(&p, TOKEN_EOF)) {

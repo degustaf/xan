@@ -8,7 +8,7 @@
 #include "debug.h"
 #include "vm.h"
 
-static void repl(void) {
+static void repl(bool printCode) {
 	VM vm;
 	initVM(&vm);
 	char line[1024];	// TODO there should not be a hardcoded line length.
@@ -22,7 +22,7 @@ static void repl(void) {
 			break;
 		}
 
-		interpret(&vm, line);
+		interpret(&vm, line, printCode);
 	}
 
 	freeVM(&vm);
@@ -57,11 +57,11 @@ static char* readFile(const char *path) {
 	return buffer;
 }
 
-static void runFile(const char *path) {
+static void runFile(const char *path, bool printCode) {
 	VM vm;
 	initVM(&vm);
 	char *source = readFile(path);
-	InterpretResult result = interpret(&vm, source);
+	InterpretResult result = interpret(&vm, source, printCode);
 	free(source);
 
 	if(result == INTERPRET_COMPILE_ERROR) exit(EXIT_COMPILE_ERROR);
@@ -71,10 +71,16 @@ static void runFile(const char *path) {
 }
 
 int main(int argc, char** argv) {
-	if(argc == 1) {
-		repl();
-	} else if(argc == 2) {
-		runFile(argv[1]);
+	bool printCode = false;
+	int i = 1;
+	if((argc > 1) && (strcmp(argv[i], "-b") == 0)) {
+		printCode = true;
+		i++;
+	}
+	if(argc == i) {
+		repl(printCode);
+	} else if(argc == i+1) {
+		runFile(argv[i], printCode);
 	} else {
 		fprintf(stderr, "Usage: %s [path]\n", argv[0]);
 		exit(64);

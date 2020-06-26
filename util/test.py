@@ -26,7 +26,6 @@ num_skipped = 0
 expectations = 0
 
 interpreter = None
-filter_path = None
 
 INTERPRETERS = {}
 C_SUITES = []
@@ -341,12 +340,6 @@ def run_script(path):
   if (splitext(path)[1] != '.xan'):
     return
 
-  # Check if we are just running a subset of the tests.
-  if filter_path:
-    this_test = relpath(path, join(REPO_DIR, 'test'))
-    if not this_test.startswith(filter_path):
-      return
-
   # Make a nice short path relative to the working directory.
 
   # Normalize it to use "/" since, among other things, the interpreters expect
@@ -418,18 +411,11 @@ def run_suites(names):
 
 
 def main(argv):
-  global filter_path
-
-  if len(argv) < 2 or len(argv) > 3:
-    print('Usage: test.py <interpreter> [filter]')
+  if len(argv) != 2:
+    print('Usage: test.py <interpreter>')
     sys.exit(1)
 
-  if len(argv) == 3:
-    filter_path = argv[2]
-
-  if argv[1] == 'all':
-    run_suites(sorted(INTERPRETERS.keys()))
-  elif argv[1] == 'xan':
+  if argv[1] == 'xan':
     run_suites(C_SUITES)
   elif argv[1] not in INTERPRETERS:
     print('Unknown interpreter "{}"'.format(argv[1]))
