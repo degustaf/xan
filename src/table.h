@@ -1,7 +1,7 @@
 #ifndef XAN_TABLE_H
 #define XAN_TABLE_H
 
-#include "value.h"
+#include "type.h"
 
 bool tableGet(ObjTable *t, ObjString *key, Value *value);
 bool tableSet(VM *vm, ObjTable *t, ObjString *key, Value value);

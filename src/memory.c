@@ -3,6 +3,7 @@
 #include <stdlib.h>
 
 #include "object.h"
+#include "table.h"
 
 #define FREE(type, pointer) \
 	reallocate(vm, pointer, sizeof(type), 0)

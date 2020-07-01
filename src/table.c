@@ -1,5 +1,6 @@
 #include "table.h"
 
+#include <assert.h>
 #include <string.h>
 
 #include "memory.h"

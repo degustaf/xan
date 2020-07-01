@@ -1,7 +1,7 @@
 #include "chunk.h"
 
+#include "array.h"
 #include "memory.h"
-#include "object.h"
 
 void initChunk(VM *vm, Chunk *chunk) {
 	chunk->count = 0;

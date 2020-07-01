@@ -17,45 +17,51 @@ else
 	TARGET_EXTENSION=
 endif
 
-ifndef CC
-	CC = gcc
-endif
+PATHS = 			src
+PATHI =				include
+PATHU =				unittest
+PATHC = 			clients
+PATHB = 			build
+PATHLB = 			libbuild
+PATHD =				depend
+PATHUB =			unittestBuild
+SRCS =				$(wildcard $(PATHS)/*.c)
+USRCS =				$(wildcard $(PATHU)/*.c)
+LIBRARY =			libxan.a
+CC = 				gcc
+LINK = 				$(CC)
+AR = 				ar
+C_STD =				c99
+DEF =				-pg -g 
+CFLAGS =			-I$(PATHS) -I$(PATHI) -Wall -Wextra -pedantic $(ARCH) -std=$(C_STD) -D_POSIX_C_SOURCE=200809L -O3 $(DEF)
+CLIENT_CFLAGS = 	-I$(PATHI) -Wall -Wextra -pedantic $(ARCH) -std=$(C_STD) -D_POSIX_C_SOURCE=200809L -O3 $(DEF)
 
-PATHS = 		src
-PATHB = 		build
-PATHD =			depend
-PATHU =			unittest
-PATHUB =		unittestBuild
-SRCS =			$(wildcard $(PATHS)/*.c)
-USRCS =			$(wildcard $(PATHU)/*.c)
-LINK = 			$(CC)
-C_STD =			c99
-DEF =			-pg -g 
-CFLAGS =		-I$(PATHS) -Wall -Wextra -pedantic $(ARCH) -std=$(C_STD) -D_POSIX_C_SOURCE=200809L -O3 $(DEF)
-
-LDFLAGS =		$(ARCH) $(DEF)
+LDFLAGS =			$(ARCH) $(DEF)
 LDLIBS =
 
-COMPILE =		$(CC) $(CFLAGS) -MT $@ -MP -MMD -MF $(PATHD)/$*.Td
-OBJS =			$(addprefix $(PATHB)/, $(notdir $(SRCS:.c=.o)))
-POSTCOMPILE =	@mv -f $(PATHD)/$*.Td $(PATHD)/$*.d && touch $@
-UBINS =			$(addprefix $(PATHUB)/, $(notdir $(USRCS:.c=$(TARGET_EXTENSION))))
+COMPILE =			$(CC) $(CFLAGS) -MT $@ -MP -MMD -MF $(PATHD)/$*.Td
+OBJS =				$(addprefix $(PATHLB)/, $(notdir $(SRCS:.c=.o)))
+POSTCOMPILE =		@mv -f $(PATHD)/$*.Td $(PATHD)/$*.d && touch $@
+UBINS =				$(addprefix $(PATHUB)/, $(notdir $(USRCS:.c=$(TARGET_EXTENSION))))
 
 .PHONY: all clean test unittest release
 
 .PRECIOUS: $(PATHD)/%.d
 .PRECIOUS: $(PATHB)/%.o
+.PRECIOUS: $(PATHB)/%.a
+.PRECIOUS: $(PATHLB)/%.o
 .PRECIOUS: $(PATHUB)/%
 
 
 # Rules
 
-# all: CFLAGS += -DDEBUG -DTEST -g -fprofile-arcs
-all: CFLAGS += -DDEBUG -DTEST -g
 all: xan$(TARGET_EXTENSION)
 
 
 $(PATHB):
+	$(MKDIR) $@
+
+$(PATHLB):
 	$(MKDIR) $@
 
 $(PATHD):
@@ -64,14 +70,23 @@ $(PATHD):
 $(PATHUB):
 	$(MKDIR) $@
 
+
 xan$(TARGET_EXTENSION): $(PATHB)/xan$(TARGET_EXTENSION)
 	ln -sf $^ $@
 
-$(PATHB)/xan$(TARGET_EXTENSION): | unittest
-$(PATHB)/xan$(TARGET_EXTENSION): $(OBJS) | $(PATHB)
+$(PATHB)/%$(TARGET_EXTENSION): $(PATHB)/%.o $(PATHLB)/$(LIBRARY) | $(PATHB)
 	$(LINK) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
-$(PATHB)/%.o: $(PATHS)/%.c | $(PATHB) $(PATHD)
+$(PATHLB)/$(LIBRARY): $(OBJS)
+	$(MAKE) unittest
+	$(RM) $@
+	$(AR) rcs $@ $^
+
+$(PATHB)/%.o: $(PATHC)/%.c | $(PATHB) $(PATHD)
+	$(COMPILE) -c $< -o $@
+	$(POSTCOMPILE)
+
+$(PATHLB)/%.o: $(PATHS)/%.c | $(PATHLB) $(PATHD)
 	$(COMPILE) -c $< -o $@
 	$(POSTCOMPILE)
 
@@ -94,8 +109,8 @@ release: clean
 clean:
 	$(CLEANUP) $(PATHS)/*.d
 	$(CLEANUP) $(PATHD)/*.Td
-	$(CLEANUP) $(PATHB)/*.o
-	$(CLEANUP) $(PATHB)/xan
+	$(CLEANUP) $(PATHLB)/*
+	$(CLEANUP) $(PATHB)/*
 	$(CLEANUP) $(PATHUB)/*
 	$(CLEANUP) ./xan
 

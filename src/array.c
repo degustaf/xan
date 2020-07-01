@@ -26,6 +26,17 @@ Value ArrayInit (VM *vm, int argCount, Value *args) {
 	return OBJ_VAL(ret);
 }
 
+void writeValueArray(VM *vm, ObjArray *array, Value value) {
+	if(array->capacity < array->count + 1) {
+		size_t oldCapacity = array->capacity;
+		array->capacity = GROW_CAPACITY(oldCapacity);
+		array->values = GROW_ARRAY(array->values, Value, oldCapacity, array->capacity);
+	}
+
+	array->values[array->count] = value;
+	array->count++;
+}
+
 NativeDef arrayMethods[] = {
 	{"init", &ArrayInit},
 	// {"__subscript", &ArrayInit},

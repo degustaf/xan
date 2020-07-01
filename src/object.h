@@ -1,12 +1,15 @@
 #ifndef XAN_OBJECT_H
 #define XAN_OBJECT_H
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 
-#include "chunk.h"
-#include "value.h"
+#include "type.h"
 
+#define IS_OBJ(value)     ((value).type == VAL_OBJ)
+#define AS_OBJ(value)     ((value).as.obj)
 #define OBJ_TYPE(value)        (AS_OBJ(value)->type)
 
 static inline bool isObjType(Value v, ObjType t) {
@@ -34,6 +37,18 @@ OBJ_BUILDER(IS_TYPE, NOTHING)
 
 #define AS_CSTRING(value)      (AS_STRING(value)->chars)
 
+#define IS_BOOL(value)    ((value).type == VAL_BOOL)
+#define IS_NIL(value)     ((value).type == VAL_NIL)
+#define IS_NUMBER(value)  ((value).type == VAL_NUMBER)
+
+#define AS_BOOL(value)    ((value).as.boolean)
+#define AS_NUMBER(value)  ((value).as.number)
+
+#define BOOL_VAL(value)   ((Value){ VAL_BOOL, { .boolean = value } })
+#define NIL_VAL           ((Value){ VAL_NIL, { .number = 0 } })
+#define NUMBER_VAL(value) ((Value){ VAL_NUMBER, { .number = value } })
+#define OBJ_VAL(object)   ((Value){ VAL_OBJ, { .obj = (Obj*)object } })
+
 ObjArray *newArray(VM *vm, size_t count);
 ObjBoundMethod *newBoundMethod(VM *vm, Value receiver, Value method);
 ObjClass *newClass(VM *vm, ObjString *name);
@@ -56,5 +71,9 @@ ObjString *takeString(char *chars, size_t length, VM *vm);
 ObjString *copyString(const char *chars, size_t length, VM *vm);
 void fprintObject(FILE *restrict stream, Value value);
 void printObject(Value value);
+
+bool valuesEqual(Value, Value);
+void fprintValue(FILE *restrict stream, Value value);
+void printValue(Value value);
 
 #endif /* XAN_OBJECT_H */

@@ -1,6 +1,7 @@
 #ifndef XAN_COMMON_H
 #define XAN_COMMON_H
 
+#include "xan.h"
 #include "arch.h"
 
 #undef DEBUG_PARSER

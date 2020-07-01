@@ -4,6 +4,7 @@
 #include <limits.h>
 #include <stddef.h>
 
+#include "object.h"
 #include "vm.h"
 
 #ifdef DEBUG_LOG_GC

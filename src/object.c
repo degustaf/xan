@@ -3,7 +3,9 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "chunk.h"
 #include "memory.h"
+#include "table.h"
 
 ObjTable *newTable(VM *vm) {
 	ObjTable *t = ALLOCATE_OBJ(ObjTable, OBJ_TABLE);
@@ -270,4 +272,37 @@ void fprintObject(FILE *restrict stream, Value value) {
 
 void printObject(Value value) {
 	fprintObject(stdout, value);
+}
+
+bool valuesEqual(Value a, Value b) {
+	if(a.type != b.type) return false;
+
+	switch(a.type) {
+		case VAL_BOOL:		return AS_BOOL(a) == AS_BOOL(b);
+		case VAL_NIL:		return true;
+		case VAL_NUMBER:	return AS_NUMBER(a) == AS_NUMBER(b);
+		case VAL_OBJ:		return AS_OBJ(a) == AS_OBJ(b);
+	}
+	return false;
+}
+
+void fprintValue(FILE *restrict stream, Value value) {
+	switch(value.type) {
+		case VAL_BOOL:
+			fprintf(stream, AS_BOOL(value) ? "true" : "false");
+			break;
+		case VAL_NIL:
+			fprintf(stream, "nil");
+			break;
+		case VAL_NUMBER:
+			fprintf(stream, "%g", AS_NUMBER(value));
+			break;
+		case VAL_OBJ:
+			fprintObject(stream, value);
+			break;
+	}
+}
+
+void printValue(Value value) {
+	fprintValue(stdout, value);
 }

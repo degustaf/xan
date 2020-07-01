@@ -1,4 +1,5 @@
 build/
+libbuild/
 unittestBuild/
 
 # Prerequisites

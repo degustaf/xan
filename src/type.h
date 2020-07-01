@@ -41,11 +41,11 @@ static const char* const ObjTypeNames[] = {
 #undef STRING_BUILDER
 };
 
-typedef struct sObj {
+struct sObj {
 	ObjType type;
 	bool isMarked;
 	struct sObj *next;
-} Obj;
+};
 
 typedef enum {
 	VAL_BOOL,
@@ -184,7 +184,7 @@ typedef struct {
 	Value *slots;
 } CallFrame;
 
-typedef struct {
+struct sVM {
 	CallFrame frames[FRAMES_MAX];
 	size_t frameCount;
 	Value *stack;
@@ -203,7 +203,7 @@ typedef struct {
 	size_t grayCount;
 	size_t grayCapacity;
 	Obj** grayStack;
-} VM;
+};
 
 typedef Value (*NativeFn)(VM *vm, int argCount, Value *args);
 
@@ -211,12 +211,6 @@ typedef struct {
 	Obj obj;
 	NativeFn function;
 } ObjNative;
-
-typedef enum {
-	INTERPRET_OK,
-	INTERPRET_COMPILE_ERROR,
-	INTERPRET_RUNTIME_ERROR,
-} InterpretResult;
 
 typedef struct {
 	const char *const name;

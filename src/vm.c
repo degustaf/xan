@@ -9,8 +9,10 @@
 #include <time.h>
 
 #include "array.h"
+#include "chunk.h"
 #include "memory.h"
 #include "parse.h"
+#include "table.h"
 
 #if defined(DEBUG_TRACE_EXECUTION) || defined(DEBUG_STACK_USAGE)
 #include "debug.h"

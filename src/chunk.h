@@ -3,7 +3,7 @@
 
 #include <assert.h>
 
-#include "value.h"
+#include "object.h"
 
 typedef enum {
 	OP_CONST_NUM,			// Registers: A,D		// 0

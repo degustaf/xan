@@ -1,6 +1,7 @@
 #ifndef XAN_DEBUG_H
 #define XAN_DEBUG_H
 
+#include "chunk.h"
 #include "vm.h"
 
 void disassembleInstruction(Chunk* chunk, size_t offset);
