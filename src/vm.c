@@ -51,43 +51,6 @@ static Value printNative(__attribute__((unused))VM *vm, __attribute__((unused))i
 	return NIL_VAL;
 }
 
-static void defineNative(VM *vm, Reg base, const char *name, NativeFn function) {
-	vm->stack[base] = OBJ_VAL(copyString(name, strlen(name), vm));
-	vm->stack[base+1] = OBJ_VAL(newNative(vm, function));
-	tableSet(vm, &vm->globals, AS_STRING(vm->stack[base]), vm->stack[base+1]);
-}
-
-void initVM(VM *vm) {
-	vm->objects = NULL;
-	vm->grayCount = 0;
-	vm->grayCapacity = 0;
-	vm->grayStack = NULL;
-	vm->openUpvalues = NULL;
-	vm->currentCompiler = NULL;
-	vm->bytesAllocated = 0;
-	vm->nextGC = 1024 * 1024;
-
-	initTable(&vm->strings);
-	initTable(&vm->globals);
-
-	vm->initString = NULL;
-	vm->stackSize = BASE_STACK_SIZE;
-	vm->stack = NULL;
-	vm->stackLast = NULL;
-	resetStack(vm);
-	vm->stack = GROW_ARRAY(NULL, Value, 0, vm->stackSize);
-	vm->stackLast = vm->stack + vm->stackSize - 1;
-	for(size_t i = 0; i <vm->stackSize; i++)
-		vm->stack[i] = NIL_VAL;
-	resetStack(vm);
-	vm->initString = copyString("init", 4, vm);
-
-	vm->stackTop = vm->stack + 2;
-	defineNative(vm, 0, "clock", clockNative);
-	defineNative(vm, 0, "print", printNative);
-	defineNativeClass(vm, &arrayDef);
-}
-
 void freeVM(VM *vm) {
 	FREE_ARRAY(Value, vm->stack, vm->stackSize);
 	vm->stackSize = 0;
@@ -135,28 +98,80 @@ static void growStack(VM *vm, size_t space_needed) {
 		vm->frames[i].slots = (Value*)((char*)vm->frames[i].slots + ((char*)vm->stack - (char*)oldStack));
 }
 
+CallFrame *incFrame(VM *vm, Reg stackUsed, Value *base, ObjClosure *function) {
+	if(vm->frameCount == FRAMES_MAX) {
+		runtimeError(vm, "Stack overflow.");
+		return NULL;
+	}
+	if(base + 1 + stackUsed > vm->stackLast) {
+		size_t base_index = base - vm->stack;
+		growStack(vm, base_index + stackUsed + 2);
+		base = vm->stack + base_index;
+	}
+	if(base + stackUsed + 1 > vm->stackTop)
+		vm->stackTop = base + stackUsed + 1;
+
+	CallFrame *frame = &vm->frames[vm->frameCount++];
+	frame->c = function;
+	frame->slots = base + 1;
+
+	return frame;
+}
+
+CallFrame *decFrame(VM *vm) {
+	vm->frameCount--;
+	return &vm->frames[vm->frameCount - 1];
+}
+
+static const NativeDef builtins[] = {
+	{"clock", clockNative},
+	{"print", printNative},
+	{NULL, NULL},
+};
+
+void initVM(VM *vm) {
+	vm->objects = NULL;
+	vm->grayCount = 0;
+	vm->grayCapacity = 0;
+	vm->grayStack = NULL;
+	vm->openUpvalues = NULL;
+	vm->currentCompiler = NULL;
+	vm->bytesAllocated = 0;
+	vm->nextGC = 1024 * 1024;
+
+	initTable(&vm->strings);
+	initTable(&vm->globals);
+
+	vm->initString = NULL;
+	vm->stackSize = BASE_STACK_SIZE;
+	vm->stack = NULL;
+	vm->stackLast = NULL;
+	resetStack(vm);
+	vm->stack = GROW_ARRAY(NULL, Value, 0, vm->stackSize);
+	vm->stackLast = vm->stack + vm->stackSize - 1;
+	for(size_t i = 0; i <vm->stackSize; i++)
+		vm->stack[i] = NIL_VAL;
+	resetStack(vm);
+	vm->initString = copyString("init", 4, vm);
+
+	CallFrame *frame = incFrame(vm, 2, vm->stack, NULL);
+	for(const NativeDef *f = builtins; f->name; f++)
+		defineNative(vm, &vm->globals, frame, f);
+	defineNativeClass(vm, &vm->globals, frame, &arrayDef);
+	decFrame(vm);
+}
+
 static bool call(VM *vm, ObjClosure *function, Value *base, Reg argCount, Reg retCount) {
 	if(argCount != function->f->arity) {	// TODO make variadic functions.
 		runtimeError(vm, "Expected %d arguments but got %d.", function->f->arity, argCount);
 		return false;
 	}
-	if(vm->frameCount == FRAMES_MAX) {
-		runtimeError(vm, "Stack overflow.");
+
+	CallFrame *frame = incFrame(vm, function->f->stackUsed, base, function);
+	if(frame == NULL)
 		return false;
-	}
-	if(base + 1 + function->f->stackUsed > vm->stackLast) {
-		size_t base_index = base - vm->stack;
-		growStack(vm, base_index + function->f->stackUsed + 2);
-		base = vm->stack + base_index;
-	}
-	if(base + function->f->stackUsed + 1 > vm->stackTop)
-		vm->stackTop = base + function->f->stackUsed + 1;
 
-	CallFrame *frame = &vm->frames[vm->frameCount++];
-	frame->c = function;
 	frame->ip = function->f->chunk.code;
-
-	frame->slots = base + 1;
 	return true;
 }
 
@@ -396,10 +411,7 @@ static InterpretResult run(VM *vm) {
 				closeUpvalues(vm, frame->slots - 1);
 				// ensure we close this in slots[-1] as an upvalue before moving return value.
 				frame->slots[-1] = frame->slots[ra];
-				vm->frameCount--;
-
-				frame = &vm->frames[vm->frameCount - 1];
-				frame->slots = frame->slots;
+				frame = decFrame(vm);
 				break;
 			}
 			case OP_JUMP:

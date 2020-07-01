@@ -77,11 +77,8 @@ static void markArray(VM *vm, ObjArray *array) {
 }
 
 static void markTable(VM *vm, Table *t) {
-	for(ssize_t i=0; i<=t->capacityMask; i++) {
-		Entry *e = &t->entries[i];
-		markObject(vm, (Obj*)e->key);
-		markValue(vm, e->value);
-	}
+	for(ssize_t i=0; i<=t->capacityMask; i++)
+		markValue(vm, t->entries[i]);
 }
 
 static void markCompilerRoots(VM *vm) {
@@ -114,6 +111,11 @@ static void blackenObject(VM *vm, Obj *o) {
 	printf("\n");
 #endif /* DEBUG_LOG_GC */
 	switch(o->type) {
+		case OBJ_ARRAY: {
+			ObjArray *array = (ObjArray*)o;
+			markArray(vm, array);
+			break;
+		}
 		case OBJ_BOUND_METHOD: {
 			ObjBoundMethod *bound = (ObjBoundMethod*)o;
 			markValue(vm, bound->receiver);
@@ -145,9 +147,10 @@ static void blackenObject(VM *vm, Obj *o) {
 			markTable(vm, &instance->fields);
 			break;
 		}
-		case OBJ_ARRAY: {
-			ObjArray *array = (ObjArray*)o;
-			markArray(vm, array);
+		case OBJ_MODULE: {
+			ObjModule *module = (ObjModule*)o;
+			markObject(vm, (Obj*)module->name);
+			markTable(vm, &module->items);
 			break;
 		}
 		case OBJ_UPVALUE:
@@ -171,13 +174,19 @@ static void freeObject(VM *vm, Obj *object) {
 	printf("%p free type %s\n", (void*)object, ObjTypeNames[object->type]);
 #endif /* DEBUG_LOG_GC */
 	switch(object->type) {
+		case OBJ_ARRAY: {
+			ObjArray *array = (ObjArray*)object;
+			FREE_ARRAY(Value, array->values, array->capacity);
+			FREE(ObjArray, object);
+			break;
+		}
 		case OBJ_BOUND_METHOD:
 			FREE(ObjBoundMethod, object);
 			break;
-		case OBJ_FUNCTION: {
-			ObjFunction *f = (ObjFunction*)object;
-			freeChunk(vm, &f->chunk);
-			FREE(ObjFunction, object);
+		case OBJ_CLASS: {
+			ObjClass *klass = (ObjClass*)object;
+			freeTable(vm, &klass->methods);
+			FREE(ObjClass, object);
 			break;
 		}
 		case OBJ_CLOSURE: {
@@ -186,10 +195,10 @@ static void freeObject(VM *vm, Obj *object) {
 			FREE(ObjClosure, object);
 			break;
 		}
-		case OBJ_STRING: {
-			ObjString *string = (ObjString*)object;
-			FREE_ARRAY(char, string->chars, string->length + 1);
-			FREE(ObjString, object);
+		case OBJ_FUNCTION: {
+			ObjFunction *f = (ObjFunction*)object;
+			freeChunk(vm, &f->chunk);
+			FREE(ObjFunction, object);
 			break;
 		}
 		case OBJ_INSTANCE: {
@@ -198,24 +207,24 @@ static void freeObject(VM *vm, Obj *object) {
 			FREE(ObjInstance, object);
 			break;
 		}
-		case OBJ_CLASS: {
-			ObjClass *klass = (ObjClass*)object;
-			freeTable(vm, &klass->methods);
-			FREE(ObjClass, object);
-			break;
-		}
 		case OBJ_NATIVE:
 			FREE(ObjNative, object);
 			break;
+		case OBJ_MODULE: {
+			ObjModule *module = (ObjModule*)object;
+			freeTable(vm, &module->items);
+			FREE(ObjModule, object);
+			break;
+		}
+		case OBJ_STRING: {
+			ObjString *string = (ObjString*)object;
+			FREE_ARRAY(char, string->chars, string->length + 1);
+			FREE(ObjString, object);
+			break;
+		}
 		case OBJ_UPVALUE:
 			FREE(ObjUpvalue, object);
 			break;
-		case OBJ_ARRAY: {
-			ObjArray *array = (ObjArray*)object;
-			FREE_ARRAY(Value, array->values, array->capacity);
-			FREE(ObjArray, object);
-			break;
-		}
 	}
 }
 
@@ -246,10 +255,10 @@ static void sweep(VM *vm) {
 }
 
 static void tableRemoveWhite(Table *t) {
-	for(ssize_t i=0; i<=t->capacityMask; i++) {
-		Entry *e = &t->entries[i];
-		if(e->key && isWhite(e->key))
-			tableDelete(t, e->key);
+	for(ssize_t i=0; i<=t->capacityMask; i+=2) {
+		Value *e = &t->entries[i];
+		if(!IS_NIL(*e) && isWhite(AS_OBJ(*e)))
+			tableDelete(t, KEY(e));
 	}
 }
 

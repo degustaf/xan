@@ -12,20 +12,22 @@
 #define FRAMES_MAX 256
 #define BASE_STACK_SIZE 16
 
-#define OBJ_BUILDER(X) \
-	X(STRING), \
-	X(NATIVE), \
-	X(FUNCTION), \
-	X(CLOSURE), \
-	X(UPVALUE), \
-	X(CLASS), \
-	X(ARRAY), \
-	X(INSTANCE), \
-	X(BOUND_METHOD),
+#define OBJ_BUILDER(X, SEP) \
+	X(STRING)SEP \
+	X(NATIVE)SEP \
+	X(FUNCTION)SEP \
+	X(CLOSURE)SEP \
+	X(UPVALUE)SEP \
+	X(CLASS)SEP \
+	X(MODULE)SEP \
+	X(ARRAY)SEP \
+	X(INSTANCE)SEP \
+	X(BOUND_METHOD)SEP
 
 typedef enum {
 #define ENUM_BUILDER(x) OBJ_##x
-	OBJ_BUILDER(ENUM_BUILDER)
+#define COMMA ,
+	OBJ_BUILDER(ENUM_BUILDER, COMMA)
 #undef ENUM_BUILDER
 } ObjType;
 
@@ -34,7 +36,7 @@ typedef uint32_t OP_position;	// an index into a bytecode array.
 
 static const char* const ObjTypeNames[] = {
 #define STRING_BUILDER(x) "OBJ_" #x
-	OBJ_BUILDER(STRING_BUILDER)
+	OBJ_BUILDER(STRING_BUILDER, COMMA)
 #undef STRING_BUILDER
 };
 
@@ -61,15 +63,13 @@ typedef struct {
 } Value;
 
 typedef struct sObjString ObjString;
-typedef struct {
-	ObjString *key;
-	Value value;
-} Entry;
+#define KEY(e) AS_STRING(e[0])
+#define VALUE(e) e[1]
 
 typedef struct {
 	size_t count;
 	ssize_t capacityMask;
-	Entry *entries;
+	Value *entries;
 } Table;
 
 typedef struct sObjClass ObjClass;
@@ -224,5 +224,17 @@ typedef struct {
 	const char *const name;
 	NativeDef *methods;
 } classDef;
+
+typedef struct {
+	Obj obj;
+	ObjString *name;
+	Table items;
+} ObjModule;
+
+typedef struct {
+	const char *const name;
+	classDef *classes;
+	NativeDef *methods;
+} ModuleDef;
 
 #endif /* XAN_TYPE_H */

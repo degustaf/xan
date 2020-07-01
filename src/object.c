@@ -52,28 +52,46 @@ ObjClass *newClass(VM *vm, ObjString *name) {
 	return klass;
 }
 
-void defineNativeClass(VM *vm, classDef *def) {
+void defineNative(VM *vm, Table *t, CallFrame *frame, const NativeDef *f) {
+	frame->slots[0] = OBJ_VAL(copyString(f->name, strlen(f->name), vm));
+	frame->slots[1] = OBJ_VAL(newNative(vm, f->method));
+	tableSet(vm, t, AS_STRING(frame->slots[0]), frame->slots[1]);
+}
+
+void defineNativeClass(VM *vm, Table *t, CallFrame *frame, classDef *def) {
 	ObjString *name = copyString(def->name, strlen(def->name), vm);
+	frame->slots[0] = OBJ_VAL(name);
 
-	fwdWriteBarrier(vm, OBJ_VAL(name));
 	ObjClass *klass = newClass(vm, name);
+	frame->slots[0] = OBJ_VAL(klass);
 
-	for(size_t i = 0; def->methods[i].name; i++) {
-		fwdWriteBarrier(vm, OBJ_VAL(klass));
-		name = copyString(def->methods[i].name, strlen(def->methods[i].name), vm);
+	CallFrame *frame2 = incFrame(vm, 2, &frame->slots[1], NULL);
+	for(size_t i = 0; def->methods[i].name; i++)
+		defineNative(vm, &klass->methods, frame2, &def->methods[i]);
+	decFrame(vm);
 
-		fwdWriteBarrier(vm, OBJ_VAL(klass));
-		fwdWriteBarrier(vm, OBJ_VAL(name));
-		ObjNative *m = newNative(vm, def->methods[i].method);
+	tableSet(vm, t, klass->name, OBJ_VAL(klass));
+}
 
-		fwdWriteBarrier(vm, OBJ_VAL(klass));
-		fwdWriteBarrier(vm, OBJ_VAL(name));
-		fwdWriteBarrier(vm, OBJ_VAL(m));
-		tableSet(vm, &klass->methods, name, OBJ_VAL(m));
-	}
+ObjModule * newModule(VM *vm, ObjString *name) {
+	// It is the callers responsability to ensure that name is findable by the GC.
+	ObjModule *module = ALLOCATE_OBJ(ObjModule, OBJ_MODULE);
+	module->name = name;
+	initTable(&module->items);
+	return module;
+}
 
-	fwdWriteBarrier(vm, OBJ_VAL(klass));
-	tableSet(vm, &vm->globals, klass->name, OBJ_VAL(klass));
+void defineNativeModule(VM *vm, CallFrame *frame, ModuleDef *def) {
+	frame->slots[0] = OBJ_VAL(copyString(def->name, strlen(def->name), vm));
+	ObjModule *ret = newModule(vm, AS_STRING(frame->slots[0]));
+	frame->slots[0] = OBJ_VAL(ret);		// For GC.
+
+	CallFrame *frame2 = incFrame(vm, 1, &frame->slots[1], NULL);
+	for(classDef *c = def->classes; c->name; c++)
+		defineNativeClass(vm, &ret->items, frame2, c);
+	for(const NativeDef *m = def->methods; m->name; m++)
+		defineNative(vm, &ret->items, frame2, m);
+	decFrame(vm);
 }
 
 ObjInstance *newInstance(VM *vm, ObjClass *klass) {
@@ -191,6 +209,9 @@ ObjString* copyString(const char *chars, size_t length, VM *vm) {
 
 void fprintObject(FILE *restrict stream, Value value) {
 	switch(OBJ_TYPE(value)) {
+		case OBJ_ARRAY:
+			fprintArray(stream, AS_ARRAY(value));
+			break;
 		case OBJ_BOUND_METHOD: {
 				Obj *method = AS_BOUND_METHOD(value)->method;
 				if(method->type == OBJ_CLOSURE) {
@@ -202,7 +223,7 @@ void fprintObject(FILE *restrict stream, Value value) {
 				break;
 			}
 		case OBJ_CLASS:
-			fprintf(stream, "%s", AS_CLASS(value)->name->chars);
+			fprintf(stream, "<Class %s>", AS_CLASS(value)->name->chars);
 			break;
 		case OBJ_CLOSURE:
 			fprintFunction(stream, AS_CLOSURE(value)->f);
@@ -213,6 +234,9 @@ void fprintObject(FILE *restrict stream, Value value) {
 		case OBJ_INSTANCE:
 			fprintf(stream, "%s instance", AS_INSTANCE(value)->klass->name->chars);
 			break;
+		case OBJ_MODULE:
+			fprintf(stream, "<Module %s>", AS_MODULE(value)->name->chars);
+			break;
 		case OBJ_NATIVE:
 			fprintf(stream, "<native fn>");
 			break;
@@ -221,9 +245,6 @@ void fprintObject(FILE *restrict stream, Value value) {
 			break;
 		case OBJ_UPVALUE:
 			fprintf(stream, "upvalue");
-			break;
-		case OBJ_ARRAY:
-			fprintArray(stream, AS_ARRAY(value));
 			break;
 	}
 }

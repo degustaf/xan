@@ -58,7 +58,7 @@ c_interpreter('xan', {
    'test/method/too_many_arguments.xan': 'skip',
    'test/method/too_many_parameters.xan': 'skip',
 
-   # 'test/regression/binary_trees.xan': 'skip',  #This is too slow if stressing the GC.
+   'test/regression/binary_trees.xan': 'skip',  #This is too slow if stressing the GC.
 })
 
 class Test:
