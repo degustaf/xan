@@ -51,16 +51,6 @@ static Value printNative(__attribute__((unused))VM *vm, __attribute__((unused))i
 	return NIL_VAL;
 }
 
-void freeVM(VM *vm) {
-	FREE_ARRAY(Value, vm->stack, vm->stackSize);
-	vm->stackSize = 0;
-	vm->stackTop = vm->stackLast = NULL;
-	freeTable(vm, &vm->strings);
-	freeTable(vm, &vm->globals);
-	vm->initString = NULL;
-	freeObjects(vm);
-}
-
 static void runtimeError(VM *vm, const char* format, ...) {
 	va_list args;
 	va_start(args, format);
@@ -138,9 +128,8 @@ void initVM(VM *vm) {
 	vm->currentCompiler = NULL;
 	vm->bytesAllocated = 0;
 	vm->nextGC = 1024 * 1024;
-
-	initTable(&vm->strings);
-	initTable(&vm->globals);
+	vm->strings = NULL;
+	vm->globals = NULL;
 
 	vm->initString = NULL;
 	vm->stackSize = BASE_STACK_SIZE;
@@ -152,13 +141,26 @@ void initVM(VM *vm) {
 	for(size_t i = 0; i <vm->stackSize; i++)
 		vm->stack[i] = NIL_VAL;
 	resetStack(vm);
+
+	vm->strings = newTable(vm);
+	vm->globals = newTable(vm);
 	vm->initString = copyString("init", 4, vm);
 
 	CallFrame *frame = incFrame(vm, 2, vm->stack, NULL);
 	for(const NativeDef *f = builtins; f->name; f++)
-		defineNative(vm, &vm->globals, frame, f);
-	defineNativeClass(vm, &vm->globals, frame, &arrayDef);
+		defineNative(vm, vm->globals, frame, f);
+	defineNativeClass(vm, vm->globals, frame, &arrayDef);
 	decFrame(vm);
+}
+
+void freeVM(VM *vm) {
+	FREE_ARRAY(Value, vm->stack, vm->stackSize);
+	vm->stackSize = 0;
+	vm->stackTop = vm->stackLast = NULL;
+	vm->strings = NULL;
+	vm->globals = NULL;
+	vm->initString = NULL;
+	freeObjects(vm);
 }
 
 static bool call(VM *vm, ObjClosure *function, Value *base, Reg argCount, Reg retCount) {
@@ -192,7 +194,7 @@ static bool callValue(VM *vm, Value *callee, Reg retCount, Reg argCount) {
 			case OBJ_CLASS: {
 				ObjClass *klass = AS_CLASS(*callee);
 				Value initializer;
-				if(tableGet(&klass->methods, vm->initString, &initializer)) {
+				if(tableGet(klass->methods, vm->initString, &initializer)) {
 					if(IS_NATIVE(initializer)) {
 						*callee = initializer;
 						goto native;
@@ -228,7 +230,7 @@ native:
 static bool bindMethod(VM *vm, ObjInstance *instance, ObjClass *klass, ObjString *name, Value *slot) {
 	Value method;
 	assert(instance);
-	if(!tableGet(&klass->methods, name, &method)) {
+	if(!tableGet(klass->methods, name, &method)) {
 		runtimeError(vm, "Undefined property '%s'.", name->chars);
 		return false;
 	}
@@ -246,7 +248,7 @@ static bool invokeMethod(VM *vm, Value *slot, ObjString *name, Reg retCount, Reg
 		return false;
 	}
 	ObjInstance *instance = AS_INSTANCE(*slot);
-	if(!tableGet(&instance->klass->methods, name, &method)) {
+	if(!tableGet(instance->klass->methods, name, &method)) {
 		runtimeError(vm, "Undefined property '%s'.", name->chars);
 		return false;
 	}
@@ -295,7 +297,7 @@ static void defineMethod(VM *vm, Value ra, Value rb, Value rc) {
 	assert(IS_STRING(rb));
 	ObjClass *klass = AS_CLASS(ra);
 	ObjString *name = AS_STRING(rb);
-	tableSet(vm, &klass->methods, name, rc);
+	tableSet(vm, klass->methods, name, rc);
 }
 
 #define READ_BYTECODE() (*frame->ip++)
@@ -350,7 +352,7 @@ static InterpretResult run(VM *vm) {
 			case OP_GET_GLOBAL: {
 				ObjString *name = READ_STRING();
 				Value value;
-				if(!tableGet(&vm->globals, name, &value)) {
+				if(!tableGet(vm->globals, name, &value)) {
 					runtimeError(vm, "Undefined variable '%s'.", name->chars);
 					return INTERPRET_RUNTIME_ERROR;
 				}
@@ -359,12 +361,12 @@ static InterpretResult run(VM *vm) {
 			}
 			case OP_DEFINE_GLOBAL: {
 				ObjString *name = READ_STRING();
-				tableSet(vm, &vm->globals, name, frame->slots[RA(bytecode)]);
+				tableSet(vm, vm->globals, name, frame->slots[RA(bytecode)]);
 				break;
 			}
 			case OP_SET_GLOBAL: {
 				ObjString *name = READ_STRING();
-				if(tableSet(vm, &vm->globals, name, frame->slots[RA(bytecode)])) {
+				if(tableSet(vm, vm->globals, name, frame->slots[RA(bytecode)])) {
 					runtimeError(vm, "Undefined variable '%s'.", name->chars);
 					return INTERPRET_RUNTIME_ERROR;
 				}
@@ -484,7 +486,7 @@ OP_JUMP:
 				}
 				ObjInstance *instance = AS_INSTANCE(v);
 				ObjString *name = AS_STRING(frame->slots[RC(bytecode)]);
-				if(tableGet(&instance->fields, name, &frame->slots[RA(bytecode)])) {
+				if(tableGet(instance->fields, name, &frame->slots[RA(bytecode)])) {
 					break;
 				} else if(bindMethod(vm, instance, instance->klass, name, &frame->slots[RA(bytecode)])) {
 					break;
@@ -500,7 +502,7 @@ OP_JUMP:
 				}
 				ObjInstance *instance = AS_INSTANCE(v);
 				assert(IS_STRING(frame->slots[RC(bytecode)]));
-				tableSet(vm, &instance->fields, AS_STRING(frame->slots[RC(bytecode)]), frame->slots[RA(bytecode)]);
+				tableSet(vm, instance->fields, AS_STRING(frame->slots[RC(bytecode)]), frame->slots[RA(bytecode)]);
 				break;
 			}
 			case OP_METHOD:
@@ -521,7 +523,7 @@ OP_JUMP:
 					return INTERPRET_RUNTIME_ERROR;
 				}
 				ObjClass *subclass = AS_CLASS(frame->slots[RA(bytecode)]);
-				tableAddAll(vm, &AS_CLASS(superclass)->methods, &subclass->methods);
+				tableAddAll(vm, AS_CLASS(superclass)->methods, subclass->methods);
 				break;
 			}
 			case OP_GET_SUPER: {

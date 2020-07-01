@@ -5,6 +5,16 @@
 
 #include "memory.h"
 
+ObjTable *newTable(VM *vm) {
+	ObjTable *t = ALLOCATE_OBJ(ObjTable, OBJ_TABLE);
+	t->count = 0;
+	t->capacityMask = -1;
+	t->entries = NULL;
+	t->klass = NULL;
+
+	return t;
+}
+
 ObjFunction *newFunction(VM *vm, size_t uvCount) {
 	ObjFunction *f = (ObjFunction*)allocateObject(sizeof(*f) + uvCount * sizeof(uint16_t), OBJ_FUNCTION, vm);
 
@@ -48,17 +58,19 @@ ObjBoundMethod *newBoundMethod(VM *vm, Value receiver, Value method) {
 ObjClass *newClass(VM *vm, ObjString *name) {
 	ObjClass *klass = ALLOCATE_OBJ(ObjClass, OBJ_CLASS);
 	klass->name = name;
-	initTable(&klass->methods);
+	klass->methods = NULL;
+	fwdWriteBarrier(vm, OBJ_VAL(klass));
+	klass->methods = newTable(vm);
 	return klass;
 }
 
-void defineNative(VM *vm, Table *t, CallFrame *frame, const NativeDef *f) {
+void defineNative(VM *vm, ObjTable *t, CallFrame *frame, const NativeDef *f) {
 	frame->slots[0] = OBJ_VAL(copyString(f->name, strlen(f->name), vm));
 	frame->slots[1] = OBJ_VAL(newNative(vm, f->method));
 	tableSet(vm, t, AS_STRING(frame->slots[0]), frame->slots[1]);
 }
 
-void defineNativeClass(VM *vm, Table *t, CallFrame *frame, classDef *def) {
+void defineNativeClass(VM *vm, ObjTable *t, CallFrame *frame, classDef *def) {
 	ObjString *name = copyString(def->name, strlen(def->name), vm);
 	frame->slots[0] = OBJ_VAL(name);
 
@@ -67,7 +79,7 @@ void defineNativeClass(VM *vm, Table *t, CallFrame *frame, classDef *def) {
 
 	CallFrame *frame2 = incFrame(vm, 2, &frame->slots[1], NULL);
 	for(size_t i = 0; def->methods[i].name; i++)
-		defineNative(vm, &klass->methods, frame2, &def->methods[i]);
+		defineNative(vm, klass->methods, frame2, &def->methods[i]);
 	decFrame(vm);
 
 	tableSet(vm, t, klass->name, OBJ_VAL(klass));
@@ -77,7 +89,9 @@ ObjModule * newModule(VM *vm, ObjString *name) {
 	// It is the callers responsability to ensure that name is findable by the GC.
 	ObjModule *module = ALLOCATE_OBJ(ObjModule, OBJ_MODULE);
 	module->name = name;
-	initTable(&module->items);
+	module->items = NULL;
+	fwdWriteBarrier(vm, OBJ_VAL(module));
+	module->items = newTable(vm);
 	return module;
 }
 
@@ -88,16 +102,18 @@ void defineNativeModule(VM *vm, CallFrame *frame, ModuleDef *def) {
 
 	CallFrame *frame2 = incFrame(vm, 1, &frame->slots[1], NULL);
 	for(classDef *c = def->classes; c->name; c++)
-		defineNativeClass(vm, &ret->items, frame2, c);
+		defineNativeClass(vm, ret->items, frame2, c);
 	for(const NativeDef *m = def->methods; m->name; m++)
-		defineNative(vm, &ret->items, frame2, m);
+		defineNative(vm, ret->items, frame2, m);
 	decFrame(vm);
 }
 
 ObjInstance *newInstance(VM *vm, ObjClass *klass) {
 	ObjInstance *o = ALLOCATE_OBJ(ObjInstance, OBJ_INSTANCE);
 	o->klass = klass;
-	initTable(&o->fields);
+	o->fields = NULL;
+	fwdWriteBarrier(vm, OBJ_VAL(o));
+	o->fields = newTable(vm);
 	return o;
 }
 
@@ -169,7 +185,7 @@ static ObjString* allocateString(char *chars, size_t length, uint32_t hash, VM *
 	string->chars = chars;
 	string->hash = hash;
 	fwdWriteBarrier(vm, OBJ_VAL(string));
-	tableSet(vm, &vm->strings, string, NIL_VAL);
+	tableSet(vm, vm->strings, string, NIL_VAL);
 
 	return string;
 }
@@ -187,7 +203,7 @@ static uint32_t hashString(const char *key, size_t length) {
 
 ObjString *takeString(char *chars, size_t length, VM *vm) {
 	uint32_t hash = hashString(chars, length);
-	ObjString *interned = tableFindString(&vm->strings, chars, length, hash);
+	ObjString *interned = tableFindString(vm->strings, chars, length, hash);
 	if(interned) {
 		FREE_ARRAY(char, chars, length+1);
 		return interned;
@@ -197,7 +213,7 @@ ObjString *takeString(char *chars, size_t length, VM *vm) {
 
 ObjString* copyString(const char *chars, size_t length, VM *vm) {
 	uint32_t hash = hashString(chars, length);
-	ObjString *interned = tableFindString(&vm->strings, chars, length, hash);
+	ObjString *interned = tableFindString(vm->strings, chars, length, hash);
 	if(interned) return interned;
 
 	char *heapChars = ALLOCATE(char, length+1);
@@ -242,6 +258,9 @@ void fprintObject(FILE *restrict stream, Value value) {
 			break;
 		case OBJ_STRING:
 			fprintf(stream, "%s", AS_CSTRING(value));
+			break;
+		case OBJ_TABLE:
+			// TODO
 			break;
 		case OBJ_UPVALUE:
 			fprintf(stream, "upvalue");

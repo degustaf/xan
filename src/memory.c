@@ -76,11 +76,6 @@ static void markArray(VM *vm, ObjArray *array) {
 		markValue(vm, array->values[i]);
 }
 
-static void markTable(VM *vm, Table *t) {
-	for(ssize_t i=0; i<=t->capacityMask; i++)
-		markValue(vm, t->entries[i]);
-}
-
 static void markCompilerRoots(VM *vm) {
 	for(Compiler *c = vm->currentCompiler; c != NULL; c = c->enclosing) {
 		markObject(vm, (Obj*)c->name);
@@ -100,7 +95,10 @@ static void markRoots(VM *vm) {
 	for(ObjUpvalue *u = vm->openUpvalues; u != NULL; u = u->next)
 		markObject(vm, (Obj*)u);
 
-	markTable(vm, &vm->globals);
+	markObject(vm, (Obj*)vm->globals);
+	// We don't want to mark the entries, so we'll manually mark vm->strings here.
+	if(vm->strings)
+		((Obj*)vm->strings)->isMarked = true;
 	markCompilerRoots(vm);
 }
 
@@ -125,7 +123,7 @@ static void blackenObject(VM *vm, Obj *o) {
 		case OBJ_CLASS: {
 			ObjClass *klass = (ObjClass*)o;
 			markObject(vm, (Obj*)klass->name);
-			markTable(vm, &klass->methods);
+			markObject(vm, (Obj*)klass->methods);
 			break;
 		}
 		case OBJ_CLOSURE: {
@@ -144,13 +142,19 @@ static void blackenObject(VM *vm, Obj *o) {
 		case OBJ_INSTANCE: {
 			ObjInstance *instance = (ObjInstance*)o;
 			markObject(vm, (Obj*)instance->klass);
-			markTable(vm, &instance->fields);
+			markObject(vm, (Obj*)instance->fields);
 			break;
 		}
 		case OBJ_MODULE: {
 			ObjModule *module = (ObjModule*)o;
 			markObject(vm, (Obj*)module->name);
-			markTable(vm, &module->items);
+			markObject(vm, (Obj*)module->items);
+			break;
+		}
+		case OBJ_TABLE: {
+			ObjTable *t = (ObjTable*) o;
+			for(ssize_t i=0; i<=t->capacityMask; i++)
+				markValue(vm, t->entries[i]);
 			break;
 		}
 		case OBJ_UPVALUE:
@@ -184,8 +188,6 @@ static void freeObject(VM *vm, Obj *object) {
 			FREE(ObjBoundMethod, object);
 			break;
 		case OBJ_CLASS: {
-			ObjClass *klass = (ObjClass*)object;
-			freeTable(vm, &klass->methods);
 			FREE(ObjClass, object);
 			break;
 		}
@@ -202,24 +204,26 @@ static void freeObject(VM *vm, Obj *object) {
 			break;
 		}
 		case OBJ_INSTANCE: {
-			ObjInstance *instance = (ObjInstance*)object;
-			freeTable(vm, &instance->fields);
 			FREE(ObjInstance, object);
+			break;
+		}
+		case OBJ_MODULE: {
+			FREE(ObjModule, object);
 			break;
 		}
 		case OBJ_NATIVE:
 			FREE(ObjNative, object);
 			break;
-		case OBJ_MODULE: {
-			ObjModule *module = (ObjModule*)object;
-			freeTable(vm, &module->items);
-			FREE(ObjModule, object);
-			break;
-		}
 		case OBJ_STRING: {
 			ObjString *string = (ObjString*)object;
 			FREE_ARRAY(char, string->chars, string->length + 1);
 			FREE(ObjString, object);
+			break;
+		}
+		case OBJ_TABLE: {
+			ObjTable *t = (ObjTable*)object;
+			FREE_ARRAY(Value, t->entries, t->capacityMask+1);
+			FREE(ObjTable, object);
 			break;
 		}
 		case OBJ_UPVALUE:
@@ -231,7 +235,6 @@ static void freeObject(VM *vm, Obj *object) {
 void freeChunk(VM *vm, Chunk *chunk) {
 	FREE_ARRAY(uint32_t, chunk->code, chunk->capacity);
 	FREE_ARRAY(size_t, chunk->lines, chunk->capacity);
-	// freeObject(vm, (Obj*)&chunk->constants);
 	chunk->constants = NULL;
 	chunk->count = 0;
 	chunk->capacity = 0;
@@ -254,7 +257,7 @@ static void sweep(VM *vm) {
 	}
 }
 
-static void tableRemoveWhite(Table *t) {
+static void tableRemoveWhite(ObjTable *t) {
 	for(ssize_t i=0; i<=t->capacityMask; i+=2) {
 		Value *e = &t->entries[i];
 		if(!IS_NIL(*e) && isWhite(AS_OBJ(*e)))
@@ -270,7 +273,8 @@ void collectGarbage(VM *vm) {
 
 	markRoots(vm);
 	traceReferences(vm);
-	tableRemoveWhite(&vm->strings);
+	if(vm->strings)
+		tableRemoveWhite(vm->strings);
 	sweep(vm);
 	vm->nextGC = vm->bytesAllocated * GC_HEAP_GROW_FACTOR;
 

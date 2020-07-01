@@ -13,17 +13,6 @@
 
 #define TABLE_MAX_LOAD 0.75
 
-void initTable(Table *t) {
-	t->count = 0;
-	t->capacityMask = -1;
-	t->entries = NULL;
-}
-
-void freeTable(VM *vm, Table *t) {
-	FREE_ARRAY(Value, t->entries, t->capacityMask + 1);
-	initTable(t);
-}
-
 static Value* findEntry(Value *entries, ssize_t capacityMask, ObjString *key) {
 	uint32_t index = key->hash & (capacityMask - 1);	// Even, i.e. key
 	Value *tombstone = NULL;
@@ -49,7 +38,7 @@ static Value* findEntry(Value *entries, ssize_t capacityMask, ObjString *key) {
 	}
 }
 
-bool tableGet(Table *t, ObjString *key, Value *value) {
+bool tableGet(ObjTable *t, ObjString *key, Value *value) {
 	if(t->entries == NULL)
 		return false;
 
@@ -61,7 +50,7 @@ bool tableGet(Table *t, ObjString *key, Value *value) {
 	return true;
 }
 
-static void adjustCapacity(VM *vm, Table *t, ssize_t capacityMask) {
+static void adjustCapacity(VM *vm, ObjTable *t, ssize_t capacityMask) {
 	Value *entries = ALLOCATE(Value, capacityMask + 1);
 	for(ssize_t i=0; i<=capacityMask; i++)
 		entries[i] = NIL_VAL;
@@ -82,7 +71,7 @@ static void adjustCapacity(VM *vm, Table *t, ssize_t capacityMask) {
 	t->capacityMask = capacityMask;
 }
 
-bool tableSet(VM *vm, Table *t, ObjString *key, Value value) {
+bool tableSet(VM *vm, ObjTable *t, ObjString *key, Value value) {
 	if(t->count + 1 > (t->capacityMask / 2) * TABLE_MAX_LOAD) {
 		ssize_t capacity = GROW_CAPACITY(t->capacityMask + 1);
 		adjustCapacity(vm, t, capacity-1);
@@ -99,7 +88,7 @@ bool tableSet(VM *vm, Table *t, ObjString *key, Value value) {
 	return isNewKey;
 }
 
-bool tableDelete(Table *t, ObjString *key) {
+bool tableDelete(ObjTable *t, ObjString *key) {
 	if(t->count == 0)
 		return false;
 
@@ -115,7 +104,7 @@ bool tableDelete(Table *t, ObjString *key) {
 	return true;
 }
 
-void tableAddAll(VM *vm, Table *from, Table *to) {
+void tableAddAll(VM *vm, ObjTable *from, ObjTable *to) {
 	for(ssize_t i=0; i<=from->capacityMask; i+=2) {
 		Value *e = &from->entries[i];
 		if(!IS_NIL(*e))
@@ -123,7 +112,7 @@ void tableAddAll(VM *vm, Table *from, Table *to) {
 	}
 }
 
-ObjString *tableFindString(Table *t, const char *chars, size_t length, uint32_t hash) {
+ObjString *tableFindString(ObjTable *t, const char *chars, size_t length, uint32_t hash) {
 	if(t->entries == NULL)
 		return NULL;
 

@@ -30,22 +30,25 @@ OBJ_BUILDER(IS_TYPE, NOTHING)
 #define AS_MODULE(value)       (((ObjModule*)AS_OBJ(value)))
 #define AS_NATIVE(value)       (((ObjNative*)AS_OBJ(value))->function)
 #define AS_STRING(value)       ((ObjString*)AS_OBJ(value))
+#define AS_TABLE(value)        ((ObjTable*)AS_OBJ(value))
 
 #define AS_CSTRING(value)      (AS_STRING(value)->chars)
 
-ObjFunction *newFunction(VM *vm, size_t uvCount);
-ObjUpvalue *newUpvalue(VM *vm, Value *slot);
-ObjClosure *newClosure(VM *vm, ObjFunction *f);
+ObjArray *newArray(VM *vm, size_t count);
 ObjBoundMethod *newBoundMethod(VM *vm, Value receiver, Value method);
 ObjClass *newClass(VM *vm, ObjString *name);
-ObjClass *copyClass(VM *vm, ObjClass *klass);
-void defineNative(VM *vm, Table *t, CallFrame *frame, const NativeDef *f);
-void defineNativeClass(VM *vm, Table *t, CallFrame *frame, classDef *def);
-ObjModule * newModule(VM *vm, ObjString *name);
-void defineNativeModule(VM *vm, CallFrame *frame, ModuleDef *def);
+ObjClosure *newClosure(VM *vm, ObjFunction *f);
+ObjFunction *newFunction(VM *vm, size_t uvCount);
 ObjInstance *newInstance(VM *vm, ObjClass *klass);
+ObjModule * newModule(VM *vm, ObjString *name);
 ObjNative *newNative(VM *vm, NativeFn function);
-ObjArray *newArray(VM *vm, size_t count);
+ObjTable *newTable(VM *vm);
+
+ObjUpvalue *newUpvalue(VM *vm, Value *slot);
+ObjClass *copyClass(VM *vm, ObjClass *klass);
+void defineNative(VM *vm, ObjTable *t, CallFrame *frame, const NativeDef *f);
+void defineNativeClass(VM *vm, ObjTable *t, CallFrame *frame, classDef *def);
+void defineNativeModule(VM *vm, CallFrame *frame, ModuleDef *def);
 ObjArray *duplicateArray(VM *vm, ObjArray *source);
 void setArray(VM *vm, ObjArray *array, int idx, Value v);
 bool getArray(ObjArray *array, int idx, Value *ret);

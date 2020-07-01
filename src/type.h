@@ -22,7 +22,8 @@
 	X(MODULE)SEP \
 	X(ARRAY)SEP \
 	X(INSTANCE)SEP \
-	X(BOUND_METHOD)SEP
+	X(BOUND_METHOD)SEP \
+	X(TABLE)
 
 typedef enum {
 #define ENUM_BUILDER(x) OBJ_##x
@@ -62,22 +63,24 @@ typedef struct {
 	} as;
 } Value;
 
-typedef struct sObjString ObjString;
-#define KEY(e) AS_STRING(e[0])
-#define VALUE(e) e[1]
-
-typedef struct {
-	size_t count;
-	ssize_t capacityMask;
-	Value *entries;
-} Table;
-
 typedef struct sObjClass ObjClass;
+typedef struct sObjTable ObjTable;
 
 #define INSTANCE_FIELDS \
 	Obj obj; \
 	ObjClass *klass; \
-	Table fields
+	ObjTable *fields
+
+typedef struct sObjString ObjString;
+#define KEY(e) AS_STRING(e[0])
+#define VALUE(e) e[1]
+
+struct sObjTable {
+	INSTANCE_FIELDS;
+	size_t count;
+	ssize_t capacityMask;
+	Value *entries;
+};
 
 typedef struct {
 	INSTANCE_FIELDS;
@@ -131,7 +134,7 @@ typedef struct {
 struct sObjClass {
 	Obj obj;
 	ObjString *name;
-	Table methods;
+	ObjTable *methods;
 };
 
 typedef struct {
@@ -189,8 +192,8 @@ typedef struct {
 	Value *stackLast;
 	size_t stackSize;
 
-	Table strings;
-	Table globals;
+	ObjTable *strings;
+	ObjTable *globals;
 	ObjString *initString;
 	ObjUpvalue *openUpvalues;
 	Obj *objects;
@@ -228,7 +231,7 @@ typedef struct {
 typedef struct {
 	Obj obj;
 	ObjString *name;
-	Table items;
+	ObjTable *items;
 } ObjModule;
 
 typedef struct {
