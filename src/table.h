@@ -9,4 +9,6 @@ bool tableDelete(ObjTable *t, ObjString *key);
 void tableAddAll(VM *vm, ObjTable *from, ObjTable *to);
 ObjString *tableFindString(ObjTable *t, const char *chars, size_t length, uint32_t hash);
 
+extern classDef tableDef;
+
 #endif /* XAN_TABLE_H */

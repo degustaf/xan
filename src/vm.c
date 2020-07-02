@@ -152,6 +152,7 @@ void initVM(VM *vm) {
 	for(const NativeDef *f = builtins; f->name; f++)
 		defineNative(vm, vm->globals, frame, f);
 	defineNativeClass(vm, vm->globals, frame, &arrayDef);
+	defineNativeClass(vm, vm->globals, frame, &tableDef);
 	decFrame(vm);
 }
 

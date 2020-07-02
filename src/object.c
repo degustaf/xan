@@ -181,6 +181,29 @@ static void fprintArray(FILE *restrict stream, ObjArray *array) {
 	fprintf(stream, "]");
 }
 
+static void fprintTable(FILE *restrict stream, ObjTable *t) {
+	if(t->count == 0) {
+		fprintf(stream, "{}");
+		return;
+	}
+
+	fprintf(stream, "{");
+	size_t i = 0;
+	while(IS_NIL(t->entries[i])) i+=2;
+	fprintValue(stream, t->entries[i]);
+	fprintf(stream, ": ");
+	fprintValue(stream, t->entries[i+1]);
+	for(i+=2; i <= t->capacityMask; i+=2) {
+		if(IS_NIL(t->entries[i]))
+			continue;
+		fprintf(stream, ", ");
+		fprintValue(stream, t->entries[i]);
+		fprintf(stream, ": ");
+		fprintValue(stream, t->entries[i+1]);
+	}
+	fprintf(stream, "}");
+}
+
 static ObjString* allocateString(char *chars, size_t length, uint32_t hash, VM *vm) {
 	ObjString *string = ALLOCATE_OBJ(ObjString, OBJ_STRING);
 	string->length = length;
@@ -262,7 +285,7 @@ void fprintObject(FILE *restrict stream, Value value) {
 			fprintf(stream, "%s", AS_CSTRING(value));
 			break;
 		case OBJ_TABLE:
-			// TODO
+			fprintTable(stream, AS_TABLE(value));
 			break;
 		case OBJ_UPVALUE:
 			fprintf(stream, "upvalue");

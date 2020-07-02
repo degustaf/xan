@@ -14,6 +14,20 @@
 
 #define TABLE_MAX_LOAD 0.75
 
+Value TableInit (VM *vm, int argCount, Value *args) {
+	ObjTable *t = newTable(vm);
+	args[-1] = OBJ_VAL(t);
+
+	assert((argCount & 1) == 0);
+
+	for(int i = 0; i<argCount; i+=2) {
+		assert(IS_STRING(args[i]));
+		tableSet(vm, t, AS_STRING(args[i]), args[i+1]);
+	}
+
+	return args[-1];
+}
+
 static Value* findEntry(Value *entries, ssize_t capacityMask, ObjString *key) {
 	uint32_t index = key->hash & (capacityMask - 1);	// Even, i.e. key
 	Value *tombstone = NULL;
@@ -134,3 +148,13 @@ ObjString *tableFindString(ObjTable *t, const char *chars, size_t length, uint32
 		index = (index+2) & t->capacityMask;
 	}
 }
+
+NativeDef tableMethods[] = {
+	{"init", &TableInit},
+	{NULL, NULL}
+};
+
+classDef tableDef = {
+	"Table",
+	tableMethods
+};
