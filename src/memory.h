@@ -34,6 +34,9 @@
 #define FREE_ARRAY(type, pointer, oldCount) \
 	reallocate(vm, pointer, sizeof(type) * (oldCount), 0)
 
+#define FREE(type, pointer) \
+	reallocate(vm, pointer, sizeof(type), 0)
+
 #define isWhite(o) (!((Obj*)(o))->isMarked)
 #define fwdWriteBarrier(vm, v) markValue(vm, v)
 

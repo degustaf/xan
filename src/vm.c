@@ -1,18 +1,17 @@
 #include "vm.h"
 
-#include <assert.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 
 #include "array.h"
 #include "chunk.h"
 #include "memory.h"
 #include "parse.h"
 #include "table.h"
+#include "builtin.h"
 
 #if defined(DEBUG_TRACE_EXECUTION) || defined(DEBUG_STACK_USAGE)
 #include "debug.h"
@@ -25,7 +24,8 @@ static void resetStack(VM *vm) {
 
 static bool isFalsey(Value v) {
 	return IS_NIL(v) || (IS_BOOL(v) && !AS_BOOL(v))
-					 || (IS_ARRAY(v) && AS_ARRAY(v)->count == 0);
+					 || (IS_ARRAY(v) && AS_ARRAY(v)->count == 0)
+					 || (IS_TABLE(v) && count(AS_TABLE(v)) == 0);
 }
 
 static Value concatenate(VM *vm, ObjString *b, ObjString *c) {
@@ -37,20 +37,6 @@ static Value concatenate(VM *vm, ObjString *b, ObjString *c) {
 
 	ObjString *result = takeString(chars, length, vm);
 	return OBJ_VAL(result);
-}
-
-static Value clockNative(__attribute__((unused))VM *vm, __attribute__((unused))int argCount, __attribute__((unused))Value *args) {
-	return NUMBER_VAL((double)clock() / CLOCKS_PER_SEC);
-}
-
-static Value printNative(__attribute__((unused))VM *vm, __attribute__((unused))int argCount, Value *args) {
-	// if(argCount != 1) {		// TODO add error handling to native functions.
-	// 	runtimeError(vm, "Expected 1 argument but got %d.", argCount);
-	// 	return NIL_VAL;
-	// }
-	printValue(*args);
-	printf("\n");
-	return NIL_VAL;
 }
 
 static void runtimeError(VM *vm, const char* format, ...) {
@@ -115,12 +101,6 @@ CallFrame *decFrame(VM *vm) {
 	return &vm->frames[vm->frameCount - 1];
 }
 
-static const NativeDef builtins[] = {
-	{"clock", clockNative},
-	{"print", printNative},
-	{NULL, NULL},
-};
-
 void initVM(VM *vm) {
 	vm->objects = NULL;
 	vm->grayCount = 0;
@@ -144,15 +124,15 @@ void initVM(VM *vm) {
 		vm->stack[i] = NIL_VAL;
 	resetStack(vm);
 
-	vm->strings = newTable(vm);
-	vm->globals = newTable(vm);
+	vm->strings = newTable(vm, 0);
+	vm->globals = newTable(vm, 0);
 	vm->initString = copyString("init", 4, vm);
 
 	CallFrame *frame = incFrame(vm, 2, vm->stack, NULL);
-	for(const NativeDef *f = builtins; f->name; f++)
-		defineNative(vm, vm->globals, frame, f);
-	defineNativeClass(vm, vm->globals, frame, &arrayDef);
-	defineNativeClass(vm, vm->globals, frame, &tableDef);
+	ObjModule *builtinM = defineNativeModule(vm, frame, &builtinDef);
+	vm->globals = builtinM->items;
+//		for(const NativeDef *f = builtins; f->name; f++)
+//			defineNative(vm, vm->globals, frame, f);
 	decFrame(vm);
 }
 
@@ -546,47 +526,76 @@ OP_JUMP:
 				frame->slots[RA(bytecode)] = OBJ_VAL(t);
 				break;
 			}
+			case OP_NEW_TABLE:
+				frame->slots[RA(bytecode)] = OBJ_VAL(newTable(vm, RD(bytecode)));
+				break;
+			case OP_DUPLICATE_TABLE: {
+				ObjTable *t = duplicateTable(vm, AS_TABLE(frame->c->f->chunk.constants->values[RD(bytecode)]));
+				frame->slots[RA(bytecode)] = OBJ_VAL(t);
+				break;
+			}
 			case OP_GET_SUBSCRIPT: {
 				Value v = frame->slots[RB(bytecode)];
-				if(!IS_ARRAY(v)) {
-					runtimeError(vm, "Only arrays can be subscripted.");
+				if(IS_ARRAY(v)) {
+					ObjArray *a = AS_ARRAY(v);
+					v = frame->slots[RC(bytecode)];
+					if(!IS_NUMBER(v)) {
+						runtimeError(vm, "Arrays can only be subscripted by numbers.");
+						return INTERPRET_RUNTIME_ERROR;
+					}
+					double n = AS_NUMBER(v);
+					if(n != (int)n) {
+						runtimeError(vm, "Subscript must be an integer.");
+						return INTERPRET_RUNTIME_ERROR;
+					}
+					if(getArray(a, (int)n, &frame->slots[RA(bytecode)])) {
+						runtimeError(vm, "Subscript out of bounds.");
+						return INTERPRET_RUNTIME_ERROR;
+					}
+				} else if(IS_TABLE(v)) {
+					ObjTable *t = AS_TABLE(v);
+					v = frame->slots[RC(bytecode)];
+					if(!IS_STRING(v)) {
+						runtimeError(vm, "Tables can only be subscripted by strings.");
+						return INTERPRET_RUNTIME_ERROR;
+					}
+					if(!tableGet(t, AS_STRING(v), &frame->slots[RA(bytecode)])) {
+						runtimeError(vm, "Subscript out of bounds.");
+						return INTERPRET_RUNTIME_ERROR;
+					}
+				} else {
+					runtimeError(vm, "Only arrays and tables can be subscripted.");
 					return INTERPRET_RUNTIME_ERROR;
 				}
-				ObjArray *a = AS_ARRAY(v);
-				v = frame->slots[RC(bytecode)];
-				if(!IS_NUMBER(v)) {
-					runtimeError(vm, "Arrays can only be subscripted by numbers.");
-					return INTERPRET_RUNTIME_ERROR;
-				}
-				double n = AS_NUMBER(v);
-				if(n != (int)n) {
-					runtimeError(vm, "Subscript must be an integer.");
-					return INTERPRET_RUNTIME_ERROR;
-				}
-				 if(getArray(a, (int)n, &frame->slots[RA(bytecode)])) {
-					 runtimeError(vm, "Subscript out of bounds.");
-					 return INTERPRET_RUNTIME_ERROR;
-				 }
 				break;
 			}
 			case OP_SET_SUBSCRIPT: {
 				Value v = frame->slots[RB(bytecode)];
-				if(!IS_ARRAY(v)) {
+				if(IS_ARRAY(v)) {
+					ObjArray *a = AS_ARRAY(v);
+					v = frame->slots[RC(bytecode)];
+					if(!IS_NUMBER(v)) {
+						runtimeError(vm, "Arrays can only be subscripted by numbers.");
+						return INTERPRET_RUNTIME_ERROR;
+					}
+					double n = AS_NUMBER(v);
+					if(n != (int)n) {
+						runtimeError(vm, "Subscript must be an integer.");
+						return INTERPRET_RUNTIME_ERROR;
+					}
+					setArray(vm, a, (int)n, frame->slots[RA(bytecode)]);
+				} else if(IS_TABLE(v)) {
+					ObjTable *t = AS_TABLE(v);
+					v = frame->slots[RC(bytecode)];
+					if(!IS_STRING(v)) {
+						runtimeError(vm, "Tables can only be subscripted by strings.");
+						return INTERPRET_RUNTIME_ERROR;
+					}
+					tableSet(vm, t, AS_STRING(v), frame->slots[RA(bytecode)]);
+				} else {
 					runtimeError(vm, "Only arrays can be subscripted.");
 					return INTERPRET_RUNTIME_ERROR;
 				}
-				ObjArray *a = AS_ARRAY(v);
-				v = frame->slots[RC(bytecode)];
-				if(!IS_NUMBER(v)) {
-					runtimeError(vm, "Arrays can only be subscripted by numbers.");
-					return INTERPRET_RUNTIME_ERROR;
-				}
-				double n = AS_NUMBER(v);
-				if(n != (int)n) {
-					runtimeError(vm, "Subscript must be an integer.");
-					return INTERPRET_RUNTIME_ERROR;
-				}
-				setArray(vm, a, (int)n, frame->slots[RA(bytecode)]);
 				break;
 			}
 			default:

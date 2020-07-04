@@ -7,16 +7,6 @@
 #include "memory.h"
 #include "table.h"
 
-ObjTable *newTable(VM *vm) {
-	ObjTable *t = ALLOCATE_OBJ(ObjTable, OBJ_TABLE);
-	t->count = 0;
-	t->capacityMask = -1;
-	t->entries = NULL;
-	t->klass = NULL;
-
-	return t;
-}
-
 ObjFunction *newFunction(VM *vm, size_t uvCount) {
 	ObjFunction *f = (ObjFunction*)allocateObject(sizeof(*f) + uvCount * sizeof(uint16_t), OBJ_FUNCTION, vm);
 
@@ -62,7 +52,7 @@ ObjClass *newClass(VM *vm, ObjString *name) {
 	klass->name = name;
 	klass->methods = NULL;
 	fwdWriteBarrier(vm, OBJ_VAL(klass));
-	klass->methods = newTable(vm);
+	klass->methods = newTable(vm, 0);
 	return klass;
 }
 
@@ -93,21 +83,23 @@ ObjModule * newModule(VM *vm, ObjString *name) {
 	module->name = name;
 	module->items = NULL;
 	fwdWriteBarrier(vm, OBJ_VAL(module));
-	module->items = newTable(vm);
+	module->items = newTable(vm, 0);
 	return module;
 }
 
-void defineNativeModule(VM *vm, CallFrame *frame, ModuleDef *def) {
+ObjModule *defineNativeModule(VM *vm, CallFrame *frame, ModuleDef *def) {
 	frame->slots[0] = OBJ_VAL(copyString(def->name, strlen(def->name), vm));
 	ObjModule *ret = newModule(vm, AS_STRING(frame->slots[0]));
 	frame->slots[0] = OBJ_VAL(ret);		// For GC.
 
 	CallFrame *frame2 = incFrame(vm, 1, &frame->slots[1], NULL);
-	for(classDef *c = def->classes; c->name; c++)
-		defineNativeClass(vm, ret->items, frame2, c);
-	for(const NativeDef *m = def->methods; m->name; m++)
+	for(classDef **c = def->classes; *c; c++)
+		defineNativeClass(vm, ret->items, frame2, *c);
+	for(NativeDef *m = def->methods; m->name; m++)
 		defineNative(vm, ret->items, frame2, m);
 	decFrame(vm);
+
+	return ret;
 }
 
 ObjInstance *newInstance(VM *vm, ObjClass *klass) {
@@ -115,7 +107,7 @@ ObjInstance *newInstance(VM *vm, ObjClass *klass) {
 	o->klass = klass;
 	o->fields = NULL;
 	fwdWriteBarrier(vm, OBJ_VAL(o));
-	o->fields = newTable(vm);
+	o->fields = newTable(vm, 0);
 	return o;
 }
 
@@ -179,29 +171,6 @@ static void fprintArray(FILE *restrict stream, ObjArray *array) {
 		fprintValue(stream, array->values[i]);
 	}
 	fprintf(stream, "]");
-}
-
-static void fprintTable(FILE *restrict stream, ObjTable *t) {
-	if(t->count == 0) {
-		fprintf(stream, "{}");
-		return;
-	}
-
-	fprintf(stream, "{");
-	size_t i = 0;
-	while(IS_NIL(t->entries[i])) i+=2;
-	fprintValue(stream, t->entries[i]);
-	fprintf(stream, ": ");
-	fprintValue(stream, t->entries[i+1]);
-	for(i+=2; i <= t->capacityMask; i+=2) {
-		if(IS_NIL(t->entries[i]))
-			continue;
-		fprintf(stream, ", ");
-		fprintValue(stream, t->entries[i]);
-		fprintf(stream, ": ");
-		fprintValue(stream, t->entries[i+1]);
-	}
-	fprintf(stream, "}");
 }
 
 static ObjString* allocateString(char *chars, size_t length, uint32_t hash, VM *vm) {

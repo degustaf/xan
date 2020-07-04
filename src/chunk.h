@@ -54,8 +54,10 @@ typedef enum {
 	OP_GET_SUPER,			// Registers: A,B,C
 	OP_NEW_ARRAY,			// Registers: A,D		// 35
 	OP_DUPLICATE_ARRAY,		// Registers: A,D
+	OP_NEW_TABLE,			// Registers: A,D
+	OP_DUPLICATE_TABLE,		// Registers: A,D
 	OP_GET_SUBSCRIPT,		// Registers: A,B,C
-	OP_SET_SUBSCRIPT,		// Registers: A,B,C
+	OP_SET_SUBSCRIPT,		// Registers: A,B,C		// 40
 } ByteCode;
 
 #define COMMA ,

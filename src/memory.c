@@ -5,9 +5,6 @@
 #include "object.h"
 #include "table.h"
 
-#define FREE(type, pointer) \
-	reallocate(vm, pointer, sizeof(type), 0)
-
 #ifdef DEBUG_LOG_GC
 #include <stdio.h>
 #include "debug.h"
@@ -152,12 +149,9 @@ static void blackenObject(VM *vm, Obj *o) {
 			markObject(vm, (Obj*)module->items);
 			break;
 		}
-		case OBJ_TABLE: {
-			ObjTable *t = (ObjTable*) o;
-			for(ssize_t i=0; i<=t->capacityMask; i++)
-				markValue(vm, t->entries[i]);
+		case OBJ_TABLE:
+			markTable(vm, (ObjTable*) o);
 			break;
-		}
 		case OBJ_UPVALUE:
 			markValue(vm, ((ObjUpvalue*)o)->closed);
 			break;
@@ -221,12 +215,9 @@ static void freeObject(VM *vm, Obj *object) {
 			FREE(ObjString, object);
 			break;
 		}
-		case OBJ_TABLE: {
-			ObjTable *t = (ObjTable*)object;
-			FREE_ARRAY(Value, t->entries, t->capacityMask+1);
-			FREE(ObjTable, object);
+		case OBJ_TABLE:
+			freeTable(vm, (ObjTable*)object);
 			break;
-		}
 		case OBJ_UPVALUE:
 			FREE(ObjUpvalue, object);
 			break;
@@ -255,14 +246,6 @@ static void sweep(VM *vm) {
 			*o = (*o)->next;
 			freeObject(vm, unreached);
 		}
-	}
-}
-
-static void tableRemoveWhite(ObjTable *t) {
-	for(ssize_t i=0; i<=t->capacityMask; i+=2) {
-		Value *e = &t->entries[i];
-		if(!IS_NIL(*e) && isWhite(AS_OBJ(*e)))
-			tableDelete(t, KEY(e));
 	}
 }
 

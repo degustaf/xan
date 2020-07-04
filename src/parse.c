@@ -1,6 +1,5 @@
 #include "parse.h"
 
-#include <assert.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -8,6 +7,7 @@
 
 #include "memory.h"
 #include "debug.h"
+#include "table.h"
 
 typedef struct ClassCompiler {
 	struct ClassCompiler *enclosing;
@@ -1116,6 +1116,72 @@ static void string(Parser *p, expressionDescription *e) {
 	makeStringConstant(p, e, p->previous.start + 1, p->previous.length - 2);
 }
 
+static void table(Parser *p, expressionDescription *e) {
+	ObjTable *t = NULL;
+	size_t count = 0;
+	Reg nextReg = p->currentCompiler->nextReg;
+	size_t ins_location = emit_AD(p, OP_NEW_TABLE, nextReg, 0);
+	exprInit(e, NONRELOC_EXTYPE, nextReg);
+	regReserve(p->currentCompiler, 1);
+	nextReg++;
+
+	if(!match(p, TOKEN_RIGHT_BRACE)) {
+		do {
+			expressionDescription key, val;
+			expression(p, &key);
+			expr_toval(p, &key);
+			if(!ExprIsConstant(&key))
+				expressionIndexed(p, SUBSCRIPT_EXTYPE, e, &key);
+			count++;
+			consume(p, TOKEN_COLON, "Expect ':' after key in table literal.");
+
+			expression(p, &val);
+			if(ExprIsConstant(&key) && (key.type != NIL_EXTYPE) &&
+					(key.type == STRING_EXTYPE || ExprIsConstantHasNoJump(&val))) {
+				if(t == NULL) {
+					t = newTable(p->vm, count);
+					uint16_t constIdx = makeConstant(p, OBJ_VAL(t));
+					currentChunk(p->currentCompiler)->code[ins_location] =
+						OP_AD(OP_DUPLICATE_TABLE, nextReg - 1, constIdx);
+				}
+				assert(IS_STRING(key.u.v));
+				if(ExprIsConstantHasNoJump(&val)) {
+					expr_toval(p, &val);
+					tableSet(p->vm, t, AS_STRING(key.u.v), val.u.v);
+				} else {
+					tableSet(p->vm, t, AS_STRING(key.u.v), NIL_VAL);
+					goto nonConstant;
+				}
+			} else {
+nonConstant:
+				if(val.type != CALL_EXTYPE)
+					exprAnyReg(p, &val);
+				if(ExprIsConstant(&key))
+					expressionIndexed(p, SUBSCRIPT_EXTYPE, e, &key);
+				emit_store(p, e, &val);
+				exprFree(p->currentCompiler, &val);
+				exprInit(e, NONRELOC_EXTYPE, nextReg - 1);
+			}
+		} while(match(p, TOKEN_COMMA));
+
+		consume(p, TOKEN_RIGHT_BRACE, "Expect '}' after table literal.");
+	}
+
+	if(nextReg == currentChunk(p->currentCompiler)->count - 1) {
+		e->u.s.info = ins_location;
+		regReserve(p->currentCompiler, -1);
+		e->type = RELOC_EXTYPE;
+	} else {
+		assert(e->type == NONRELOC_EXTYPE);
+		// We might need to set this.
+	}
+
+	if(t == NULL) {
+		setbc_d(&currentChunk(p->currentCompiler)->code[ins_location], count);
+	}
+
+}
+
 static void primaryExpression(Parser *p, expressionDescription *e);
 
 static void dot(Parser *p, expressionDescription *v) {
@@ -1148,7 +1214,6 @@ static void unary(Parser *p, expressionDescription *e) {
 		case TOKEN_CLASS:
 		case TOKEN_DOT:
 		case TOKEN_FUN:
-		case TOKEN_LEFT_BRACE:
 		case TOKEN_VAR:
 			errorAtCurrent(p, "Expect expression.");
 			exit(EXIT_COMPILE_ERROR);
@@ -1286,6 +1351,9 @@ static void primaryExpression(Parser *p, expressionDescription *e) {
 			break;
 		case TOKEN_LEFT_BRACKET:
 			array(p, e);
+			break;
+		case TOKEN_LEFT_BRACE:
+			table(p, e);
 			break;
 		case TOKEN_FALSE:
 		case TOKEN_TRUE:

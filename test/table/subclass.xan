@@ -1,0 +1,7 @@
+class A < Table {}
+
+var a = A("a", "b");
+print(a["a"]);	// expect: b
+
+a = A();
+print(a);	// expect: {}

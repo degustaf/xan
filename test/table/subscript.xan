@@ -1,0 +1,6 @@
+var a = {"a": "b", "c": "d", "e": "f", "g": "h"};
+
+print(a["a"]);	// expect: b
+print(a["c"]);	// expect: d
+print(a["e"]);	// expect: f
+print(a["g"]);	// expect: h

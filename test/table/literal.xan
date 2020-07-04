@@ -1,0 +1,14 @@
+var a = {};
+print(a);	// expect: {}
+
+a = {"one": 1};
+print(a);	// expect: {one: 1}
+
+a = {"one": 1, "two": 2};
+print(a);	// expect: {two: 2, one: 1}
+
+a = {"one": 1, "two": 2, "three": 12/4};
+print(a);	// expect: {three: 3, two: 2, one: 1}
+
+a = {"one": 1, "two": 2, "th" + "ree": 3*4};
+print(a);	// expect: {three: 12, two: 2, one: 1}

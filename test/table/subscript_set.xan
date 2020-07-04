@@ -1,0 +1,12 @@
+{
+  var a = {"one": 1, "two": 2, "three":3};
+  a["one"] = 4;
+  a["two"] = 5;
+  a["three"] = 6;
+  print(a);	// expect: {three: 6, two: 5, one: 4}
+}
+
+{
+  var a = {"one": 1, "two": 2, "three":3};
+  print(a["two"] = 5);	// expect: 5
+}

@@ -8,4 +8,4 @@ a = Table("one", 1, "two", 2);
 print(a);	// expect: {two: 2, one: 1}
 
 a = Table("one", 1, "two", 2, "three", 3, "four", 4, "five", 5);
-print(a);	// expect: {three: 3, four: 4, five: 5, two: 2, one: 1}
+print(a);	// expect: {three: 3, four: 4, two: 2, one: 1, five: 5}

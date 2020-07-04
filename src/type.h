@@ -75,13 +75,6 @@ typedef struct sObjString ObjString;
 #define KEY(e) AS_STRING(e[0])
 #define VALUE(e) e[1]
 
-struct sObjTable {
-	INSTANCE_FIELDS;
-	size_t count;
-	ssize_t capacityMask;
-	Value *entries;
-};
-
 typedef struct {
 	INSTANCE_FIELDS;
 	size_t capacity;
@@ -230,7 +223,7 @@ typedef struct {
 
 typedef struct {
 	const char *const name;
-	classDef *classes;
+	classDef **classes;
 	NativeDef *methods;
 } ModuleDef;
 

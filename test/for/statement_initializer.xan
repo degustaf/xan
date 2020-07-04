@@ -1,2 +1,1 @@
-// [line 2] Error at '{': Expect expression.
-for ({}; a < 2; a = a + 1) {}
+for ({}; a < 2; a = a + 1) {} // expect runtime error: Undefined variable 'a'.

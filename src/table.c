@@ -14,11 +14,18 @@
 
 #define TABLE_MAX_LOAD 0.75
 
-Value TableInit (VM *vm, int argCount, Value *args) {
-	ObjTable *t = newTable(vm);
-	args[-1] = OBJ_VAL(t);
+struct sObjTable {
+	INSTANCE_FIELDS;
+	size_t count;
+	ssize_t capacityMask;
+	Value *entries;
+};
 
+Value TableInit (VM *vm, int argCount, Value *args) {
 	assert((argCount & 1) == 0);
+
+	ObjTable *t = newTable(vm, argCount);
+	args[-1] = OBJ_VAL(t);
 
 	for(int i = 0; i<argCount; i+=2) {
 		assert(IS_STRING(args[i]));
@@ -81,9 +88,24 @@ static void adjustCapacity(VM *vm, ObjTable *t, ssize_t capacityMask) {
 		t->count++;
 	}
 
-	FREE_ARRAY(Value, t->entries, t->capacityMask);
+	FREE_ARRAY(Value, t->entries, t->capacityMask + 1);
 	t->entries = entries;
 	t->capacityMask = capacityMask;
+}
+
+ObjTable *newTable(VM *vm, size_t count) {
+	ObjTable *t = ALLOCATE_OBJ(ObjTable, OBJ_TABLE);
+	t->count = 0;
+	t->capacityMask = -1;
+	t->entries = NULL;
+	t->klass = NULL;
+	if(count) {
+		size_t capacityMask = round_up_pow_2(2 * count) - 1;
+		fwdWriteBarrier(vm, OBJ_VAL(t));
+		adjustCapacity(vm, t, capacityMask);
+	}
+
+	return t;
 }
 
 bool tableSet(VM *vm, ObjTable *t, ObjString *key, Value value) {
@@ -147,6 +169,57 @@ ObjString *tableFindString(ObjTable *t, const char *chars, size_t length, uint32
 
 		index = (index+2) & t->capacityMask;
 	}
+}
+
+void fprintTable(FILE *restrict stream, ObjTable *t) {
+	if(t->count == 0) {
+		fprintf(stream, "{}");
+		return;
+	}
+
+	fprintf(stream, "{");
+	ssize_t i = 0;
+	while(IS_NIL(t->entries[i])) i+=2;
+	fprintValue(stream, t->entries[i]);
+	fprintf(stream, ": ");
+	fprintValue(stream, t->entries[i+1]);
+	for(i+=2; i <= t->capacityMask; i+=2) {
+		if(IS_NIL(t->entries[i]))
+			continue;
+		fprintf(stream, ", ");
+		fprintValue(stream, t->entries[i]);
+		fprintf(stream, ": ");
+		fprintValue(stream, t->entries[i+1]);
+	}
+	fprintf(stream, "}");
+}
+
+ObjTable *duplicateTable(VM *vm, ObjTable *source) {
+	ObjTable *dest = newTable(vm, (source->capacityMask+1)/2);
+	tableAddAll(vm, source, dest);
+	return dest;
+}
+
+size_t count(ObjTable *t) {
+	return t->count;
+}
+
+void markTable(VM *vm, ObjTable *t) {
+	for(ssize_t i=0; i<=t->capacityMask; i++)
+		markValue(vm, t->entries[i]);
+}
+
+void tableRemoveWhite(ObjTable *t) {
+	for(ssize_t i=0; i<=t->capacityMask; i+=2) {
+		Value *e = &t->entries[i];
+		if(!IS_NIL(*e) && isWhite(AS_OBJ(*e)))
+			tableDelete(t, KEY(e));
+	}
+}
+
+void freeTable(VM *vm, ObjTable *t) {
+	FREE_ARRAY(Value, t->entries, t->capacityMask+1);
+	FREE(ObjTable, t);
 }
 
 NativeDef tableMethods[] = {

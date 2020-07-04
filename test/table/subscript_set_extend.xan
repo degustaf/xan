@@ -1,0 +1,6 @@
+var a = {"one": 1, "two": 2, "three":3};
+a["four"] = 4;
+print(a);	// expect: {three: 3, four: 4, two: 2, one: 1}
+
+a["six"] = 6;
+print(a);	// expect: {three: 3, four: 4, two: 2, six: 6, one: 1}
