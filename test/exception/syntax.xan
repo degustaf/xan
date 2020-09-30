@@ -1,0 +1,29 @@
+try {
+} catch {
+}
+
+class Exception {
+}
+
+try {
+} catch(Exception) {
+}
+
+try {
+} catch(Exception e) {
+}
+
+// try {
+// } catch(Exception) {
+// } catch(Exception) {
+// }
+// 
+// try {
+// } catch(Exception) {
+// } catch {
+// }
+
+try {
+} catch {
+	print("Unreachable");
+}

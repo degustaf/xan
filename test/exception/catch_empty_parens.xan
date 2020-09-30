@@ -1,0 +1,3 @@
+try {
+} catch() { // Error at ')': Expect Exception class name.
+}

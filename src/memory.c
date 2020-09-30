@@ -4,6 +4,7 @@
 
 #include "object.h"
 #include "table.h"
+#include "exception.h"
 
 #ifdef DEBUG_LOG_GC
 #include <stdio.h>
@@ -82,10 +83,10 @@ static void markCompilerRoots(VM *vm) {
 }
 
 static void markRoots(VM *vm) {
-	for(Value *slot = vm->stack; slot < vm->stackTop; slot++) {
+	for(Value *slot = vm->stack; slot < vm->stackTop; slot++)
 		markValue(vm, *slot);
-	}
 	markObject(vm, (Obj*)vm->initString);
+	markValue(vm, vm->exception);
 
 	for(size_t i=0; i<vm->frameCount; i++)
 		markObject(vm, (Obj*)vm->frames[i].c);
@@ -155,6 +156,11 @@ static void blackenObject(VM *vm, Obj *o) {
 		case OBJ_UPVALUE:
 			markValue(vm, ((ObjUpvalue*)o)->closed);
 			break;
+		case OBJ_EXCEPTION: {
+			ObjException *e = (ObjException*)o;
+			markObject(vm, (Obj*)e->msg);
+			break;
+		}
 		case OBJ_NATIVE:
 		case OBJ_STRING:
 			break;
@@ -220,6 +226,9 @@ static void freeObject(VM *vm, Obj *object) {
 			break;
 		case OBJ_UPVALUE:
 			FREE(ObjUpvalue, object);
+			break;
+		case OBJ_EXCEPTION:
+			FREE(ObjException, object);
 			break;
 	}
 }

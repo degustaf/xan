@@ -146,7 +146,7 @@ static void printExpr(FILE *restrict stream, expressionDescription *e) {
 
 #ifdef DEBUG_JUMP_LISTS
 	static void printPendingJumps(Compiler *c) {
-		fprintf(stderr, "pendingJumpList = %d\ncode = {", c->pendingJumpList);
+		fprintf(stderr, "pendingJumpList = %d\tlast_target = %d\ncode = {", c->pendingJumpList, c->last_target);
 		for(size_t i=0; i < currentChunk(c)->count; i++) {
 			fprintf(stderr, "%x, ", currentChunk(c)->code[i]);
 		}
@@ -222,38 +222,39 @@ static void jump_patch_instruction(Parser *p, OP_position src, OP_position dest)
 }
 
 static OP_position jump_next(Chunk *c, OP_position pc) {
-#ifdef DEBUG_PARSER
+	PRINT_FUNCTION;
+#ifdef DEBUG_JUMP_LISTS
 	fprintf(stderr, "pc = %u\tNO_JUMP = %u\n", pc, NO_JUMP);
-#endif /* DEBUG_PARSER */
+#endif /* DEBUG_JUMP_LISTS */
 	ptrdiff_t delta = RJump(c->code[pc]);
 	if((OP_position)delta == NO_JUMP)
 		return NO_JUMP;
 	OP_position ret = (OP_position)(((ptrdiff_t)pc+1)+delta);
-#ifdef DEBUG_PARSER
+#ifdef DEBUG_JUMP_LISTS
 	fprintf(stderr, "code = %x\tdelta = %zd\tret = %u\n", c->code[pc], delta, ret);
-#endif /* DEBUG_PARSER */
+#endif /* DEBUG_JUMP_LISTS */
 	return ret;
 }
 
 static void jump_patch_value(Parser *p, OP_position jump_list, OP_position value_target, Reg r, OP_position default_target) {
 	Compiler *c = p->currentCompiler;
 	PRINT_FUNCTION;
-#ifdef DEBUG_PARSER
+#ifdef DEBUG_JUMP_LISTS
 	fprintf(stderr, "code = {");
 	for(size_t i=0; i < currentChunk(c)->count; i++) {
 		fprintf(stderr, "%x, ", currentChunk(c)->code[i]);
 	}
 	fprintf(stderr, "}\nvalue_target = %u\tdefault_target = %u\tr = %u\n", value_target, default_target, r);
-#endif /* DEBUG_PARSER */
+#endif /* DEBUG_JUMP_LISTS */
 	while(jump_list != NO_JUMP) {
-#ifdef DEBUG_PARSER
+#ifdef DEBUG_JUMP_LISTS
 		fprintf(stderr, "jump_list = %u\t", jump_list);
 		fprintf(stderr, "code = {");
 		for(size_t i=0; i < currentChunk(c)->count; i++) {
 			fprintf(stderr, "%x, ", currentChunk(c)->code[i]);
 		}
 		fprintf(stderr, "}\n");
-#endif /* DEBUG_PARSER */
+#endif /* DEBUG_JUMP_LISTS */
 		OP_position next = jump_next(currentChunk(c), jump_list);
 		if(jump_patch_test_reg(currentChunk(c), jump_list, r))
 			jump_patch_instruction(p, jump_list, value_target);
@@ -287,8 +288,6 @@ static size_t emit_AJ(Parser *p, ByteCode op, Reg a, uint16_t j) {
 static size_t emit_ABC(Parser *p, ByteCode op, Reg a, Reg b, Reg c) {
 	return emitBytecode(p, OP_ABC(op, a, b, c));
 }
-
-#define expr_hasjump(e)  ((e)->true_jump != (e)->false_jump)
 
 static inline void exprInit(expressionDescription *e, expressionType type, uint16_t info) {
 	e->type = type;
@@ -353,9 +352,8 @@ static void exprDischarge(Parser *p, expressionDescription *e) {
 		case SUBSCRIPT_EXTYPE: {
 			Reg rkey = e->u.s.aux;
 			regFree(p->currentCompiler, rkey);
-			uint32_t ins = OP_ABC(e->type == INDEXED_EXTYPE ? OP_GET_PROPERTY : OP_GET_SUBSCRIPT, 0, (Reg)e->u.s.info, rkey);
 			regFree(p->currentCompiler, (Reg)e->u.s.info);
-			e->u.s.info = emitBytecode(p, ins);
+			e->u.s.info = emit_ABC(p, e->type == INDEXED_EXTYPE ? OP_GET_PROPERTY : OP_GET_SUBSCRIPT, 0, (Reg)e->u.s.info, rkey);
 			e->type = RELOC_EXTYPE;
 			return;
 		}
@@ -398,7 +396,6 @@ static uint16_t makeConstant(Parser *p, Value v);
 
 static void exprToRegNoBranch(Parser *p, expressionDescription *e, Reg r) {
 	PRINT_FUNCTION;
-	uint32_t instruction = 0;
 	Reg assignable = false;
 	printExpr(stderr, e);
 	exprDischarge(p, e);
@@ -407,11 +404,13 @@ static void exprToRegNoBranch(Parser *p, expressionDescription *e, Reg r) {
 #define PRIMITIVE_CASES(x) case x##_EXTYPE
 		PRIMITIVE_BUILDER(PRIMITIVE_CASES, :):
 #undef PRIMITIVE_CASES
-			instruction = OP_AD(OP_PRIMITIVE, r, (primitive)e->type);
+			emit_AD(p, OP_PRIMITIVE, r, (primitive)e->type);
+			printExpr(stderr, e);
 			break;
 		case STRING_EXTYPE:
 		case NUMBER_EXTYPE:
-			instruction = OP_AD(OP_CONST_NUM, r, makeConstant(p, e->u.v));
+			emit_AD(p, OP_CONST_NUM, r, makeConstant(p, e->u.v));
+			printExpr(stderr, e);
 			break;
 		case RELOC_EXTYPE:
 			setbc_a(codePtr(currentChunk(p->currentCompiler), e), r);
@@ -419,14 +418,16 @@ static void exprToRegNoBranch(Parser *p, expressionDescription *e, Reg r) {
 		case NONRELOC_EXTYPE:
 			if(e->u.s.info == r)
 				goto NO_INSTRUCTION;
-			instruction = OP_AD(OP_MOV, r, e->u.s.info);
+			emit_AD(p, OP_MOV, r, e->u.s.info);
 			assignable = e->assignable;
+			printExpr(stderr, e);
 			break;
 		case GLOBAL_EXTYPE:
 			assert(false);
 			if(e->u.r.r == r)
 				goto NO_INSTRUCTION;
 			assignable = e->assignable;
+			printExpr(stderr, e);
 			break;
 		case VOID_EXTYPE:
 		case JUMP_EXTYPE:
@@ -437,8 +438,6 @@ static void exprToRegNoBranch(Parser *p, expressionDescription *e, Reg r) {
 #endif
 			assert(p->panicMode || false);
 	}
-	emitBytecode(p, instruction);
-	printExpr(stderr, e);
 NO_INSTRUCTION:
 #ifdef DEBUG_EXPRESSION_DESCRIPTION
 	e->u.s.info = 0;
@@ -474,13 +473,13 @@ static bool jump_novalue(Chunk *c, OP_position list) {
 	return false;
 }
 
-static size_t emit_jump(Parser *p) {
+static size_t emit_jump(Parser *p, ByteCode op) {
 	PRINT_FUNCTION;
 	Compiler *c = p->currentCompiler;
 	printPendingJumps(c);
 	OP_position pjl = c->pendingJumpList;
 	c->pendingJumpList = NO_JUMP;
-	OP_position j = emit_AJ(p, OP_JUMP, c->nextReg, (uint16_t)NO_JUMP);
+	OP_position j = emit_AJ(p, op, c->nextReg, (uint16_t)NO_JUMP);
 	jump_append(p, &j, pjl);
 	printPendingJumps(c);
 	return j;
@@ -518,7 +517,7 @@ static OP_position emit_branch(Parser *p, expressionDescription *e, bool cond) {
 		uint32_t *ip = &currentChunk(p->currentCompiler)->code[e->u.s.info];
 		if(OP(*ip) == OP_NOT) {
 			*ip = OP_AD(cond ? OP_JUMP_IF_FALSE : OP_JUMP_IF_TRUE, 0, RD(*ip));
-			return emit_jump(p);
+			return emit_jump(p, OP_JUMP);
 		}
 	}
 	if(e->type != NONRELOC_EXTYPE) {
@@ -527,7 +526,7 @@ static OP_position emit_branch(Parser *p, expressionDescription *e, bool cond) {
 	}
 	assert(e->type == NONRELOC_EXTYPE);
 	emit_AD(p, cond ? OP_COPY_JUMP_IF_TRUE : OP_COPY_JUMP_IF_FALSE, NO_REG, e->u.s.info);
-	OP_position pc = emit_jump(p);
+	OP_position pc = emit_jump(p, OP_JUMP);
 	exprFree(p->currentCompiler, e);
 	return pc;
 }
@@ -569,11 +568,11 @@ static void exprToReg(Parser *p, expressionDescription *e, Reg r) {
 	if(e->type == JUMP_EXTYPE)
 		jump_append(p, &e->true_jump, e->u.s.info);
 	printExpr(stderr, e);
-	if(expr_hasjump(e)) {
+	if(ExprHasJump(e)) {
 		OP_position jump_false = NO_JUMP;
 		OP_position jump_true = NO_JUMP;
 		if(jump_novalue(currentChunk(p->currentCompiler), e->true_jump) || jump_novalue(currentChunk(p->currentCompiler), e->false_jump)) {
-			OP_position jump_val = e->type == JUMP_EXTYPE ? NO_JUMP : emit_jump(p);
+			OP_position jump_val = e->type == JUMP_EXTYPE ? NO_JUMP : emit_jump(p, OP_JUMP);
 			jump_false = emit_AD(p, OP_PRIMITIVE, r, FALSE_EXTYPE);
 			emit_AJ(p, OP_JUMP, p->currentCompiler->nextReg, 1);
 			jump_true = emit_AD(p, OP_PRIMITIVE, r, TRUE_EXTYPE);
@@ -612,7 +611,7 @@ static Reg exprAnyReg(Parser *p, expressionDescription *e) {
 	exprDischarge(p, e);
 	printExpr(stderr, e);
 	if(e->type == NONRELOC_EXTYPE) {
-		if(!expr_hasjump(e))
+		if(!ExprHasJump(e))
 			return e->u.s.info;
 		if(e->u.s.info >= p->currentCompiler->actVar) {
 			exprToReg(p, e, e->u.s.info);
@@ -629,7 +628,7 @@ static Reg exprAnyReg(Parser *p, expressionDescription *e) {
 
 static void expr_toval(Parser *p, expressionDescription *e) {
 	PRINT_FUNCTION;
-	if(expr_hasjump(e))
+	if(ExprHasJump(e))
 		exprAnyReg(p, e);
 	else
 		exprDischarge(p, e);
@@ -788,13 +787,13 @@ static void emitDefine(Parser *p, expressionDescription *v, expressionDescriptio
 		return;
 	}
 	exprAnyReg(p, e);
-	emitBytecode(p, OP_AD(OP_DEFINE_GLOBAL, e->u.r.r, v->u.s.info));
+	emit_AD(p, OP_DEFINE_GLOBAL, e->u.r.r, v->u.s.info);
 	exprFree(p->currentCompiler, e);
 	exprFree(p->currentCompiler, v);
 }
 
 static void emitReturn(Parser *p, expressionDescription *e) {
-	emitBytecode(p, OP_AD(OP_RETURN, exprAnyReg(p, e), 2));
+	emit_AD(p, OP_RETURN, exprAnyReg(p, e), 2);
 }
 
 static void initCompiler(Parser *p, Compiler *compiler, FunctionType type) {
@@ -1007,8 +1006,8 @@ static Reg argumentList(Parser *p, expressionDescription *e) {
 			regReserve(p->currentCompiler, 1);
 		exprToReg(p, &args, base + nargs);
 	}
-	uint32_t ins = OP_ABC(OP_CALL, base, 1, nargs);
-	exprInit(e, CALL_EXTYPE, emitBytecode(p, ins));
+	OP_position info = emit_ABC(p, OP_CALL, base, 1, nargs);
+	exprInit(e, CALL_EXTYPE, info);
 	e->u.s.aux = base;
 	p->currentCompiler->nextReg = base+1;
 #ifdef DEBUG_PARSER
@@ -1473,7 +1472,6 @@ static void expressionStatement(Parser *p) {
 	if(!p->hadError)
 		exprAnyReg(p, &e);
 	printExpr(stderr, &e);
-	// p->currentCompiler->nextReg = p->currentCompiler->actVar;
 #ifdef DEBUG_PARSER
 	fprintf(stderr, "nextReg = %d\tactVar = %d\n", p->currentCompiler->nextReg, p->currentCompiler->actVar);
 #endif /* DEBUG_PARSER */
@@ -1498,7 +1496,7 @@ static void ifStatement(Parser *p) {
 	consume(p, TOKEN_RIGHT_PAREN, "Expect ')' after condition.");
 	statement(p);
 	if(match(p, TOKEN_ELSE)) {
-		jump_append(p, &escapelist, emit_jump(p));
+		jump_append(p, &escapelist, emit_jump(p, OP_JUMP));
 		jump_to_here(p, flist);
 		statement(p);
 	} else {
@@ -1515,7 +1513,7 @@ static void whileStatement(Parser *p) {
 	consume(p, TOKEN_RIGHT_PAREN, "Expect ')' after condition.");
 
 	statement(p);
-	jump_patch(p, emit_jump(p), start);
+	jump_patch(p, emit_jump(p, OP_JUMP), start);
 	jump_to_here(p, exit_condition);
 }
 
@@ -1785,8 +1783,59 @@ static void forStatement(Parser *p) {
 	}
 
 	endScope(p, false);
-	jump_patch(p, emit_jump(p), start);
+	jump_patch(p, emit_jump(p, OP_JUMP), start);
 	jump_to_here(p, exit_condition);
+}
+
+static void tryStatement(Parser *p) {
+	consume(p, TOKEN_LEFT_BRACE, "Expect '{' after 'try'.");
+	if(p->hadError) return;
+	OP_position escapelist = NO_JUMP;
+	OP_position flist = emit_jump(p, OP_BEGIN_TRY);
+	beginScope(p->currentCompiler);
+	block(p);
+	endScope(p, localIsCaptured(p->currentCompiler));
+	bool default_catch = false;
+	jump_append(p, &escapelist, emit_jump(p, OP_END_TRY));
+	while(match(p, TOKEN_CATCH)) {
+		beginScope(p->currentCompiler);
+		if(default_catch)
+			errorAtPrevious(p, "Default 'catch' must be last.");
+		jump_to_here(p, flist);
+		if(match(p, TOKEN_LEFT_PAREN)) {
+			expressionDescription exceptionKlass;
+			consume(p, TOKEN_IDENTIFIER, "Expect Exception class name.");
+			var_lookup(p, p->currentCompiler, &p->previous, &exceptionKlass, true);
+			if(match(p, TOKEN_IDENTIFIER)) {
+				expressionDescription exceptionVar;
+				scopeVariable(p, &exceptionVar, &p->previous);
+			}
+			consume(p, TOKEN_RIGHT_PAREN, "Expect ')' after Exception specifier.");
+		} else {
+			default_catch = true;
+		}
+		consume(p, TOKEN_LEFT_BRACE, "Expect '{' after 'catch'.");
+		if(p->hadError) return;
+		block(p);
+		endScope(p, localIsCaptured(p->currentCompiler));
+		jump_append(p, &escapelist, emit_jump(p, OP_END_TRY));
+	}
+	jump_to_here(p, escapelist);
+	/*
+	expressionDescription e;
+	exprInit(&e, NIL_EXTYPE, 0);
+	exprAnyReg(p, &e);
+	*/
+	Chunk *c = currentChunk(p->currentCompiler);
+	jump_patch_value(p, p->currentCompiler->pendingJumpList, c->count, NO_REG, c->count);
+	p->currentCompiler->pendingJumpList = NO_JUMP;
+}
+
+static void throwStatement(Parser *p) {
+	expressionDescription e;
+	expression(p, &e);
+	if(!p->hadError)
+	emit_AD(p, OP_THROW, exprAnyReg(p, &e), 0);
 }
 
 static void statement(Parser *p) {
@@ -1803,6 +1852,12 @@ static void statement(Parser *p) {
 		beginScope(p->currentCompiler);
 		block(p);
 		endScope(p, localIsCaptured(p->currentCompiler));
+	} else if(match(p, TOKEN_FUN)) {
+		funDeclaration(p);
+	} else if(match(p, TOKEN_TRY)) {
+		tryStatement(p);
+	} else if(match(p, TOKEN_THROW)) {
+		throwStatement(p);
 	} else {
 		expressionStatement(p);
 	}
@@ -1817,8 +1872,6 @@ static void declaration(Parser *p) {
 	PRINT_FUNCTION;
 	if(match(p, TOKEN_CLASS)) {
 		classDeclaration(p);
-	} else if(match(p, TOKEN_FUN)) {
-		funDeclaration(p);
 	} else if(match(p, TOKEN_VAR)) {
 		varDeclaration(p);
 	} else {

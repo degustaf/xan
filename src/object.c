@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "chunk.h"
+#include "exception.h"
 #include "memory.h"
 #include "table.h"
 
@@ -258,6 +259,9 @@ void fprintObject(FILE *restrict stream, Value value) {
 			break;
 		case OBJ_UPVALUE:
 			fprintf(stream, "upvalue");
+			break;
+		case OBJ_EXCEPTION:
+			fprintf(stream, "Error: %s: ", AS_EXCEPTION(value)->msg->chars);
 			break;
 	}
 }

@@ -11,6 +11,7 @@
 
 #define FRAMES_MAX 256
 #define BASE_STACK_SIZE 16
+#define TRY_MAX 16
 
 #define OBJ_BUILDER(X, SEP) \
 	X(STRING)SEP \
@@ -23,7 +24,8 @@
 	X(ARRAY)SEP \
 	X(INSTANCE)SEP \
 	X(BOUND_METHOD)SEP \
-	X(TABLE)
+	X(TABLE)SEP \
+	X(EXCEPTION)
 
 typedef enum {
 #define ENUM_BUILDER(x) OBJ_##x
@@ -174,6 +176,8 @@ typedef struct {
 	ObjClosure *c;
 	uint32_t *ip;
 	Value *slots;
+	size_t try_count;
+	uint32_t *try_ip[TRY_MAX];
 } CallFrame;
 
 struct sVM {
@@ -183,6 +187,7 @@ struct sVM {
 	Value *stackTop;
 	Value *stackLast;
 	size_t stackSize;
+	Value exception;
 
 	ObjTable *strings;
 	ObjTable *globals;

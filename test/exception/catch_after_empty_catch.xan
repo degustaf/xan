@@ -1,0 +1,6 @@
+class Exception {
+}
+
+try {
+} catch {
+} catch(Exception) // Error at 'catch': Default 'catch' must be last.

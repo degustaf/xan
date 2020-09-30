@@ -209,6 +209,15 @@ void disassembleInstruction(Chunk* chunk, size_t offset) {
 		case OP_SET_SUBSCRIPT:
 			InstructionABC("OP_SET_SUBSCRIPT", bytecode);
 			break;
+		case OP_BEGIN_TRY:
+			InstructionJ("OP_BEGIN_TRY", bytecode);
+			break;
+		case OP_END_TRY:
+			InstructionJ("OP_END_TRY", bytecode);
+			break;
+		case OP_THROW:
+			InstructionA("OP_THROW", bytecode);
+			break;
 		default:
 			printf("Unknown opcode %d\n", OP(bytecode));
 			return;

@@ -1,0 +1,1 @@
+throw Exception("Customized.");	// expect runtime error: Customized.

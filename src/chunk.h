@@ -58,6 +58,9 @@ typedef enum {
 	OP_DUPLICATE_TABLE,		// Registers: A,D
 	OP_GET_SUBSCRIPT,		// Registers: A,B,C
 	OP_SET_SUBSCRIPT,		// Registers: A,B,C		// 40
+	OP_BEGIN_TRY,			// Registers: D
+	OP_END_TRY,				// Registers: D
+	OP_THROW,				// Registers: A
 } ByteCode;
 
 #define COMMA ,

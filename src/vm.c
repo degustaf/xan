@@ -8,6 +8,7 @@
 
 #include "array.h"
 #include "chunk.h"
+#include "exception.h"
 #include "memory.h"
 #include "parse.h"
 #include "table.h"
@@ -39,6 +40,8 @@ static Value concatenate(VM *vm, ObjString *b, ObjString *c) {
 	return OBJ_VAL(result);
 }
 
+#define runtimeError(vm, ...) vm->exception = OBJ_VAL(ExceptionFormattedStr(vm, __VA_ARGS__))
+/*
 static void runtimeError(VM *vm, const char* format, ...) {
 	va_list args;
 	va_start(args, format);
@@ -60,6 +63,7 @@ static void runtimeError(VM *vm, const char* format, ...) {
 
 	resetStack(vm);
 }
+*/
 
 static void growStack(VM *vm, size_t space_needed) {
 	// pointers into stack: stackTop, stackLast, vm->frames[].slots
@@ -92,6 +96,7 @@ CallFrame *incFrame(VM *vm, Reg stackUsed, Value *base, ObjClosure *function) {
 	CallFrame *frame = &vm->frames[vm->frameCount++];
 	frame->c = function;
 	frame->slots = base + 1;
+	frame->try_count = 0;
 
 	return frame;
 }
@@ -127,6 +132,7 @@ void initVM(VM *vm) {
 	vm->strings = newTable(vm, 0);
 	vm->globals = newTable(vm, 0);
 	vm->initString = copyString("init", 4, vm);
+	vm->exception = NIL_VAL;
 
 	CallFrame *frame = incFrame(vm, 2, vm->stack, NULL);
 	ObjModule *builtinM = defineNativeModule(vm, frame, &builtinDef);
@@ -290,7 +296,7 @@ static void defineMethod(VM *vm, Value ra, Value rb, Value rc) {
 		Value c = frame->slots[RC(bytecode)]; \
 		if(!IS_NUMBER(b) || !IS_NUMBER(c)) { \
 			runtimeError(vm, "Operands must be numbers."); \
-			return INTERPRET_RUNTIME_ERROR; \
+			goto exception_unwind; \
 		} \
 		frame->slots[RA(bytecode)] = valueType(AS_NUMBER(b) op AS_NUMBER(c)); \
 	} while(false)
@@ -322,7 +328,7 @@ static InterpretResult run(VM *vm) {
 				Value vRD = frame->slots[RD(bytecode)];
 				if(!IS_NUMBER(vRD)) {
 					runtimeError(vm, "Operand must be a number.");
-					return INTERPRET_RUNTIME_ERROR;
+					goto exception_unwind;
 				}
 				frame->slots[RA(bytecode)] = NUMBER_VAL(-AS_NUMBER(vRD));
 				break;
@@ -337,7 +343,7 @@ static InterpretResult run(VM *vm) {
 				Value value;
 				if(!tableGet(vm->globals, name, &value)) {
 					runtimeError(vm, "Undefined variable '%s'.", name->chars);
-					return INTERPRET_RUNTIME_ERROR;
+					goto exception_unwind;
 				}
 				frame->slots[RA(bytecode)] = value;
 				break;
@@ -351,7 +357,7 @@ static InterpretResult run(VM *vm) {
 				ObjString *name = READ_STRING();
 				if(tableSet(vm, vm->globals, name, frame->slots[RA(bytecode)])) {
 					runtimeError(vm, "Undefined variable '%s'.", name->chars);
-					return INTERPRET_RUNTIME_ERROR;
+					goto exception_unwind;
 				}
 				break;
 			}
@@ -380,7 +386,7 @@ static InterpretResult run(VM *vm) {
 					frame->slots[RA(bytecode)] = NUMBER_VAL(AS_NUMBER(b) + AS_NUMBER(c));
 				} else {
 					runtimeError(vm, "Operands must be two numbers or two strings.");
-					return INTERPRET_RUNTIME_ERROR;
+					goto exception_unwind;
 				}
 				break;
 			}
@@ -429,7 +435,7 @@ OP_JUMP:
 				break;
 			case OP_CALL:	// RA = func/dest reg; RB = retCount; RC = argCount
 				if(!callValue(vm, &frame->slots[RA(bytecode)], RB(bytecode), RC(bytecode)))
-					return INTERPRET_RUNTIME_ERROR;
+					goto exception_unwind;
 				frame = &vm->frames[vm->frameCount-1];
 				break;
 			case OP_GET_UPVAL: {
@@ -465,7 +471,7 @@ OP_JUMP:
 				Value v = frame->slots[rb];
 				if(!IS_INSTANCE(v)) {
 					runtimeError(vm, "Only instances have properties.");
-					return INTERPRET_RUNTIME_ERROR;
+					goto exception_unwind;
 				}
 				ObjInstance *instance = AS_INSTANCE(v);
 				ObjString *name = AS_STRING(frame->slots[RC(bytecode)]);
@@ -474,14 +480,14 @@ OP_JUMP:
 				} else if(bindMethod(vm, instance, instance->klass, name, &frame->slots[RA(bytecode)])) {
 					break;
 				}
-				return INTERPRET_RUNTIME_ERROR;
+				goto exception_unwind;
 			}
 			case OP_SET_PROPERTY: {
 				int16_t rb = ((int16_t)(Reg)(RB(bytecode) + 1))-1;
 				Value v = frame->slots[rb];
 				if(!IS_INSTANCE(v)) {
 					runtimeError(vm, "Only instances have fields.");
-					return INTERPRET_RUNTIME_ERROR;
+					goto exception_unwind;
 				}
 				ObjInstance *instance = AS_INSTANCE(v);
 				assert(IS_STRING(frame->slots[RC(bytecode)]));
@@ -496,14 +502,14 @@ OP_JUMP:
 				ObjString *name = AS_STRING(frame->slots[RN(bytecode)]);
 				if(invokeMethod(vm, &frame->slots[RM(bytecode)], name, RO(bytecode), RP(bytecode)))
 					break;
-				return INTERPRET_RUNTIME_ERROR;
+				goto exception_unwind;
 			}
 			*/
 			case OP_INHERIT: {
 				Value superclass = frame->slots[RD(bytecode)];
 				if(!IS_CLASS(superclass)) {
 					runtimeError(vm, "Superclass must be a class.");
-					return INTERPRET_RUNTIME_ERROR;
+					goto exception_unwind;
 				}
 				ObjClass *subclass = AS_CLASS(frame->slots[RA(bytecode)]);
 				tableAddAll(vm, AS_CLASS(superclass)->methods, subclass->methods);
@@ -515,7 +521,7 @@ OP_JUMP:
 				ObjInstance *instance = AS_INSTANCE(frame->slots[rb]);
 				ObjString *name = AS_STRING(frame->slots[RC(bytecode)]);
 				if(!bindMethod(vm, instance, superclass, name, &frame->slots[RA(bytecode)]))
-					return INTERPRET_RUNTIME_ERROR;
+					goto exception_unwind;
 				break;
 			}
 			case OP_NEW_ARRAY:
@@ -541,31 +547,31 @@ OP_JUMP:
 					v = frame->slots[RC(bytecode)];
 					if(!IS_NUMBER(v)) {
 						runtimeError(vm, "Arrays can only be subscripted by numbers.");
-						return INTERPRET_RUNTIME_ERROR;
+						goto exception_unwind;
 					}
 					double n = AS_NUMBER(v);
 					if(n != (int)n) {
 						runtimeError(vm, "Subscript must be an integer.");
-						return INTERPRET_RUNTIME_ERROR;
+						goto exception_unwind;
 					}
 					if(getArray(a, (int)n, &frame->slots[RA(bytecode)])) {
 						runtimeError(vm, "Subscript out of bounds.");
-						return INTERPRET_RUNTIME_ERROR;
+						goto exception_unwind;
 					}
 				} else if(IS_TABLE(v)) {
 					ObjTable *t = AS_TABLE(v);
 					v = frame->slots[RC(bytecode)];
 					if(!IS_STRING(v)) {
 						runtimeError(vm, "Tables can only be subscripted by strings.");
-						return INTERPRET_RUNTIME_ERROR;
+						goto exception_unwind;
 					}
 					if(!tableGet(t, AS_STRING(v), &frame->slots[RA(bytecode)])) {
 						runtimeError(vm, "Subscript out of bounds.");
-						return INTERPRET_RUNTIME_ERROR;
+						goto exception_unwind;
 					}
 				} else {
 					runtimeError(vm, "Only arrays and tables can be subscripted.");
-					return INTERPRET_RUNTIME_ERROR;
+					goto exception_unwind;
 				}
 				break;
 			}
@@ -576,12 +582,12 @@ OP_JUMP:
 					v = frame->slots[RC(bytecode)];
 					if(!IS_NUMBER(v)) {
 						runtimeError(vm, "Arrays can only be subscripted by numbers.");
-						return INTERPRET_RUNTIME_ERROR;
+						goto exception_unwind;
 					}
 					double n = AS_NUMBER(v);
 					if(n != (int)n) {
 						runtimeError(vm, "Subscript must be an integer.");
-						return INTERPRET_RUNTIME_ERROR;
+						goto exception_unwind;
 					}
 					setArray(vm, a, (int)n, frame->slots[RA(bytecode)]);
 				} else if(IS_TABLE(v)) {
@@ -589,19 +595,47 @@ OP_JUMP:
 					v = frame->slots[RC(bytecode)];
 					if(!IS_STRING(v)) {
 						runtimeError(vm, "Tables can only be subscripted by strings.");
-						return INTERPRET_RUNTIME_ERROR;
+						goto exception_unwind;
 					}
 					tableSet(vm, t, AS_STRING(v), frame->slots[RA(bytecode)]);
 				} else {
 					runtimeError(vm, "Only arrays can be subscripted.");
-					return INTERPRET_RUNTIME_ERROR;
+					goto exception_unwind;
 				}
 				break;
 			}
+			case OP_BEGIN_TRY:
+				frame->try_ip[frame->try_count++] = frame->ip + RJump(bytecode);
+				break;
+			case OP_END_TRY:
+				frame->ip += RJump(bytecode);
+				assert(frame->try_count > 0);
+				frame->try_count--;
+				break;
 			default:
 				fprintf(stderr, "Unimplemented opcode %d.\n", OP(bytecode));
-				exit(1);
+				return INTERPRET_RUNTIME_ERROR;
+			case OP_THROW:
+				vm->exception = frame->slots[RA(bytecode)];
+exception_unwind: {
+				ObjException *err = AS_EXCEPTION(vm->exception);
+				fprintObject(stderr, OBJ_VAL(err->msg));
+				fputs("\n", stderr);
+				for(size_t i = err->topFrame; i > 0; i--) {
+					CallFrame *frame = &vm->frames[i-1];
+					ObjFunction *f = frame->c->f;
+					size_t instruction = frame->ip - f->chunk.code - 1;	// We have already advanced ip.
+					fprintf(stderr, "[line %zu] in ", frame->c->f->chunk.lines[instruction]);
+					if(f->name == NULL) {
+						fprintf(stderr, "script\n");
+					} else {
+						fprintf(stderr, "%s()\n", f->name->chars);
+					}
+				}
+				return INTERPRET_RUNTIME_ERROR;
+			}
 		}
+		continue;
 	}
 }
 #undef BINARY_OPVV

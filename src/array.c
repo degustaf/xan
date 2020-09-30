@@ -18,13 +18,18 @@ ObjArray *newArray(VM *vm, size_t count) {
 	return array;
 }
 
-Value ArrayInit (VM *vm, int argCount, Value *args) {
-	size_t count = argCount == 0 ? 0 : (size_t)AS_NUMBER(*args);
+Value ArrayInit(VM *vm, int argCount, Value *args) {
+	size_t count = argCount == 0 ? 0 : (size_t)AS_NUMBER(args[0]);
 	ObjArray *ret = newArray(vm, count);
 	for(size_t i=0; i<ret->count; i++)
 		ret->values[i] = NIL_VAL;
 	return OBJ_VAL(ret);
 }
+
+/*
+Value ArrayCount(VM *vm, int argCount, Value *args) {
+}
+*/
 
 void writeValueArray(VM *vm, ObjArray *array, Value value) {
 	if(array->capacity < array->count + 1) {

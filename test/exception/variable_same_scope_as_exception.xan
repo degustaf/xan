@@ -1,0 +1,4 @@
+try {
+} catch(Exception e) {
+	var e; // Error at 'e': Variable with this name already declared in this scope.
+}

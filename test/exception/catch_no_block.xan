@@ -1,0 +1,2 @@
+try {
+} catch 1; // Error at '1': Expect '{' after 'catch'.

@@ -3,6 +3,7 @@
 #include <time.h>
 
 #include "array.h"
+#include "exception.h"
 #include "object.h"
 #include "table.h"
 
@@ -22,6 +23,7 @@ static Value printNative(__attribute__((unused))VM *vm, __attribute__((unused))i
 
 classDef *BuiltinClasses[] = {
 	&arrayDef,
+	&exceptionDef,
 	&tableDef,
 	NULL
 };

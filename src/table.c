@@ -99,6 +99,7 @@ ObjTable *newTable(VM *vm, size_t count) {
 	t->capacityMask = -1;
 	t->entries = NULL;
 	t->klass = NULL;
+	t->fields = NULL;
 	if(count) {
 		size_t capacityMask = round_up_pow_2(2 * count) - 1;
 		fwdWriteBarrier(vm, OBJ_VAL(t));

@@ -34,6 +34,7 @@ OBJ_BUILDER(IS_TYPE, NOTHING)
 #define AS_NATIVE(value)       (((ObjNative*)AS_OBJ(value))->function)
 #define AS_STRING(value)       ((ObjString*)AS_OBJ(value))
 #define AS_TABLE(value)        ((ObjTable*)AS_OBJ(value))
+#define AS_EXCEPTION(value)    ((ObjException*)AS_OBJ(value))
 
 #define AS_CSTRING(value)      (AS_STRING(value)->chars)
 
