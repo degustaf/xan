@@ -19,6 +19,15 @@ Scanner* initScanner(const char *source) {
 	return ret;
 }
 
+Scanner *duplicateScanner(Scanner *s) {
+	Scanner *ret = malloc(sizeof(Scanner));
+	ret->start = s->start;
+	ret->current = s->current;
+	ret->line = s->line;
+
+	return ret;
+}
+
 void endScanner(Scanner *s) {
 	free(s);
 }

@@ -162,7 +162,6 @@ typedef struct Compiler {
 	uint16_t upvalues[UINT8_COUNT];
 	size_t uvCount;
 	int arity;
-	size_t localCount;
 	int scopeDepth;
 	OP_position pendingJumpList;
 	OP_position last_target;

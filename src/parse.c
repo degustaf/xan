@@ -774,7 +774,7 @@ static bool match(Parser *p, TokenType type) {
 static void markInitialized(Parser *p) {
 	if(p->currentCompiler->scopeDepth == 0)
 		return;
-	p->currentCompiler->locals[p->currentCompiler->localCount-1].depth = p->currentCompiler->scopeDepth;
+	p->currentCompiler->locals[p->currentCompiler->actVar].depth = p->currentCompiler->scopeDepth;
 }
 
 static void emitDefine(Parser *p, expressionDescription *v, expressionDescription *e) {
@@ -803,7 +803,6 @@ static void initCompiler(Parser *p, Compiler *compiler, FunctionType type) {
 	p->currentCompiler = compiler;
 	p->vm->currentCompiler = compiler;
 	compiler->type = type;
-	compiler->localCount = 0;
 	compiler->scopeDepth = 0;
 	compiler->arity = 0;
 	compiler->uvCount = 0;
@@ -816,7 +815,7 @@ static void initCompiler(Parser *p, Compiler *compiler, FunctionType type) {
 #ifdef DEBUG_PARSER
 	fprintf(stderr, "nextReg = %d\n", compiler->nextReg);
 #endif /* DEBUG_PARSER */
-	Local *local = &compiler->locals[compiler->localCount++];
+	Local *local = &compiler->locals[compiler->actVar];
 	local->depth = 0;
 	local->isCaptured = false;
 	if((type == TYPE_METHOD) || (type == TYPE_INITIALIZER)) {
@@ -875,7 +874,7 @@ static Token syntheticToken(const char *text) {
 }
 
 static int16_t resolveLocal(Parser *p, Compiler *c, Token *name) {
-	for(int16_t i = c->localCount-1; i>=0; i--) {
+	for(int16_t i = c->actVar; i>=0; i--) {
 		Local *local = &c->locals[i];
 		if(identifiersEqual(name, &local->name)) {
 			if(local->depth == -1)
@@ -889,15 +888,14 @@ static int16_t resolveLocal(Parser *p, Compiler *c, Token *name) {
 static int addLocal(Parser *p, Token name) {
 	PRINT_FUNCTION;
 	Compiler *c = p->currentCompiler;
-	if(c->localCount == UINT8_COUNT) {
+	if(c->actVar + 1 == UINT8_COUNT) {
 		errorAtPrevious(p, "Too many local variables in function.");
 	}
-	c->actVar++;
-	Local *local = &c->locals[c->localCount++];
+	Local *local = &c->locals[++c->actVar];
 	local->name = name;
 	local->depth = -1;
 	local->isCaptured = false;
-	return c->localCount - 2;
+	return c->actVar - 1;
 }
 
 static int declareVariable(Parser *p, Token *name) {
@@ -905,7 +903,7 @@ static int declareVariable(Parser *p, Token *name) {
 	if(p->currentCompiler->scopeDepth == 0)	// Global scope
 		return -1;
 
-	for(int i=p->currentCompiler->localCount-1; i>=0; i--) {
+	for(int i=p->currentCompiler->actVar; i>=0; i--) {
 		Local *local = &p->currentCompiler->locals[i];
 		if(local->depth != -1 && local->depth < p->currentCompiler->scopeDepth) {
 			break;
@@ -1525,17 +1523,17 @@ static void beginScope(Compiler *current) {
 	current->scopeDepth++;
 }
 
-static void endScope(Parser *p) {
-	Compiler *c = p->currentCompiler;
-	ssize_t i;
+static ssize_t localIsCaptured(const Compiler *c) {
 	bool closeUpvalues = false;
-	for(i = c->localCount-1; i>=0; i--) {
-		Local *l = &c->locals[i];
-		if(l->depth < c->scopeDepth)
-			break;
+	for(const Local *l = &c->locals[c->actVar]; (l >= c->locals) && (l->depth >= c->scopeDepth) ; l--)
 		closeUpvalues |= l->isCaptured;
+	return closeUpvalues;
+}
+
+static bool endScope(Parser *p, bool closeUpvalues) {
+	Compiler *c = p->currentCompiler;
+	for(const Local *l = &c->locals[c->actVar]; (l >= c->locals) && (l->depth >= c->scopeDepth) ; l--)
 		c->actVar--;
-	}
 
 	if(closeUpvalues)
 		emit_AD(p, OP_CLOSE_UPVALUES, c->actVar, 0);
@@ -1545,7 +1543,7 @@ static void endScope(Parser *p) {
 #endif /* DEBUG_PARSER */
 	c->scopeDepth--;
 	assert(c->scopeDepth >= 0);
-	c->localCount = i+1;
+	return closeUpvalues;
 }
 
 static void synchronize(Parser *p) {
@@ -1605,7 +1603,7 @@ static void function(Parser *p, expressionDescription *e, FunctionType type) {
 	// Compile the body.
 	consume(p, TOKEN_LEFT_BRACE, "Expect '{' before function body.");
 	block(p);
-	endScope(p);
+	endScope(p, localIsCaptured(p->currentCompiler));
 
 	ObjFunction *f = endCompiler(p);
 	exprInit(e, RELOC_EXTYPE, emit_AD(p, OP_CLOSURE, p->currentCompiler->actVar, makeConstant(p, OBJ_VAL(f))));
@@ -1671,9 +1669,9 @@ static void classDeclaration(Parser *p) {
 	consume(p, TOKEN_LEFT_BRACE, "Expect '{' before class body.");
 	while(!check(p, TOKEN_RIGHT_BRACE) && !check(p, TOKEN_EOF))
 		method(p, &klass);
-	if(classCompiler.hasSuperClass) {
-		endScope(p);
-	}
+	if(classCompiler.hasSuperClass)
+		endScope(p, localIsCaptured(p->currentCompiler));
+
 	consume(p, TOKEN_RIGHT_BRACE, "Expect '}' after class body.");
 	p->currentClass = classCompiler.enclosing;
 }
@@ -1730,9 +1728,10 @@ static void varDeclaration(Parser *p) {
 }
 
 static void forStatement(Parser *p) {
+	Compiler *c = p->currentCompiler;
 	consume(p, TOKEN_LEFT_PAREN, "Expect '(' after 'for'.");
 
-	beginScope(p->currentCompiler);
+	beginScope(c);
 	if(match(p, TOKEN_SEMICOLON)) {
 		// no initializer.
 	} else if(match(p, TOKEN_VAR)) {
@@ -1740,7 +1739,7 @@ static void forStatement(Parser *p) {
 	} else {
 		expressionStatement(p);
 	}
-	OP_position start = p->currentCompiler->last_target = currentChunk(p->currentCompiler)->count;
+	OP_position start = c->last_target = currentChunk(c)->count;
 
 	OP_position exit_condition = NO_JUMP;
 	if(p->panicMode) {
@@ -1750,20 +1749,42 @@ static void forStatement(Parser *p) {
 		consume(p, TOKEN_SEMICOLON, "Expected ';' after loop condition.");
 	}
 
+	Scanner *cachedScanner = NULL;
+	Token cachedCurrent, cachedPrevious;
 	if(!match(p, TOKEN_RIGHT_PAREN)) {
-		OP_position bodyJump = emit_jump(p);
-
-		OP_position incrementStart = currentChunk(p->currentCompiler)->count;
+		cachedScanner = duplicateScanner(p->s);
+		cachedCurrent = p->current;
+		cachedPrevious = p->previous;
+		size_t cachedCount = currentChunk(c)->count;
 		expressionDescription e;
 		expression(p, &e);
 		consume(p, TOKEN_RIGHT_PAREN, "Expect ')' after for clause.");
-
-		jump_patch(p, emit_jump(p), start);
-		start = incrementStart;
-		jump_patch(p, bodyJump, currentChunk(p->currentCompiler)->count);
+		currentChunk(c)->count = cachedCount;
 	}
-	statement(p);
-	endScope(p);
+	statement(p);	// Body
+
+	if(localIsCaptured(c)) {
+		const Local *l;
+		for(l = &c->locals[c->actVar]; (l >= c->locals) && (l->depth >= c->scopeDepth) ; l--) {}
+		emit_AD(p, OP_CLOSE_UPVALUES, l - c->locals, 0);
+	}
+	if(cachedScanner) {
+		Scanner *s = p->s;
+		p->s = cachedScanner;
+		Token pr = p->previous;
+		p->previous = cachedPrevious;
+		Token cu = p->current;
+		p->current = cachedCurrent;
+		expressionDescription e;
+		expression(p, &e);
+		consume(p, TOKEN_RIGHT_PAREN, "Expect ')' after for clause.");
+		p->s = s;
+		endScanner(cachedScanner);
+		p->previous = pr;
+		p->current = cu;
+	}
+
+	endScope(p, false);
 	jump_patch(p, emit_jump(p), start);
 	jump_to_here(p, exit_condition);
 }
@@ -1781,7 +1802,7 @@ static void statement(Parser *p) {
 	} else if(match(p, TOKEN_LEFT_BRACE)) {
 		beginScope(p->currentCompiler);
 		block(p);
-		endScope(p);
+		endScope(p, localIsCaptured(p->currentCompiler));
 	} else {
 		expressionStatement(p);
 	}

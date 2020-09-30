@@ -70,6 +70,7 @@ typedef struct {
 typedef struct Scanner Scanner;
 
 Scanner* initScanner(const char *source);
+Scanner *duplicateScanner(Scanner *s);
 void endScanner(Scanner*);
 Token scanToken(Scanner *s);
 
