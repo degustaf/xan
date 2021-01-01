@@ -63,11 +63,10 @@ static void runFile(const char *path, bool printCode) {
 	char *source = readFile(path);
 	InterpretResult result = interpret(&vm, source, printCode);
 	free(source);
+	freeVM(&vm);
 
 	if(result == INTERPRET_COMPILE_ERROR) exit(EXIT_COMPILE_ERROR);
 	if(result == INTERPRET_RUNTIME_ERROR) exit(EXIT_RUNTIME_ERROR);
-
-	freeVM(&vm);
 }
 
 int main(int argc, char** argv) {

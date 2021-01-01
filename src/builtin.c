@@ -21,7 +21,7 @@ static Value printNative(__attribute__((unused))VM *vm, __attribute__((unused))i
 	return NIL_VAL;
 }
 
-classDef *BuiltinClasses[] = {
+ObjClass *BuiltinClasses[] = {
 	&arrayDef,
 	&exceptionDef,
 	&tableDef,

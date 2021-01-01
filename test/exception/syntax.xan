@@ -13,6 +13,10 @@ try {
 } catch(Exception e) {
 }
 
+try {
+} catch(e) { // Nothing was thrown so we skip over 'e' without noticing that it's undefined.
+}
+
 // try {
 // } catch(Exception) {
 // } catch(Exception) {
@@ -22,6 +26,11 @@ try {
 // } catch(Exception) {
 // } catch {
 // }
+
+try {
+} catch(Exception e) {
+	print(e);
+}
 
 try {
 } catch {

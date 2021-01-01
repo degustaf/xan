@@ -126,12 +126,6 @@ typedef struct {
 	size_t uvCount;
 } ObjClosure;
 
-struct sObjClass {
-	Obj obj;
-	ObjString *name;
-	ObjTable *methods;
-};
-
 typedef struct {
 	INSTANCE_FIELDS;
 } ObjInstance;
@@ -176,18 +170,24 @@ typedef struct {
 	ObjClosure *c;
 	uint32_t *ip;
 	Value *slots;
-	size_t try_count;
-	uint32_t *try_ip[TRY_MAX];
 } CallFrame;
+
+struct try_frame {
+	size_t frame;
+	uint32_t ip;
+	Reg exception;
+};
 
 struct sVM {
 	CallFrame frames[FRAMES_MAX];
+	struct try_frame _try[TRY_MAX];
 	size_t frameCount;
+	size_t tryCount;
 	Value *stack;
 	Value *stackTop;
 	Value *stackLast;
-	size_t stackSize;
 	Value exception;
+	size_t stackSize;
 
 	ObjTable *strings;
 	ObjTable *globals;
@@ -214,10 +214,14 @@ typedef struct {
 	NativeFn method;
 } NativeDef;
 
-typedef struct {
-	const char *const name;
-	NativeDef *methods;
-} classDef;
+struct sObjClass {
+	Obj obj;
+	const char *cname;
+	NativeDef *methodsArray;
+	ObjString *name;
+	ObjTable *methods;
+	bool isException;
+};
 
 typedef struct {
 	Obj obj;
@@ -227,7 +231,7 @@ typedef struct {
 
 typedef struct {
 	const char *const name;
-	classDef **classes;
+	ObjClass **classes;
 	NativeDef *methods;
 } ModuleDef;
 

@@ -1,5 +1,6 @@
 #include "memory.h"
 
+#include <assert.h>
 #include <stdlib.h>
 
 #include "object.h"
@@ -83,10 +84,18 @@ static void markCompilerRoots(VM *vm) {
 }
 
 static void markRoots(VM *vm) {
-	for(Value *slot = vm->stack; slot < vm->stackTop; slot++)
+#ifdef DEBUG_LOG_GC
+	printf("stackTop = %ld (%p)\n", vm->stackTop - vm->stack, (void*)vm->stackTop);
+#endif
+	for(Value *slot = vm->stack; slot < vm->stackTop; slot++) {
+#ifdef DEBUG_LOG_GC
+		printf("stack[%ld] (%p) is ", slot - vm->stack, (void*)slot);
+		printValue(*slot);
+		printf("\n");
+#endif
 		markValue(vm, *slot);
+	}
 	markObject(vm, (Obj*)vm->initString);
-	markValue(vm, vm->exception);
 
 	for(size_t i=0; i<vm->frameCount; i++)
 		markObject(vm, (Obj*)vm->frames[i].c);
@@ -158,7 +167,7 @@ static void blackenObject(VM *vm, Obj *o) {
 			break;
 		case OBJ_EXCEPTION: {
 			ObjException *e = (ObjException*)o;
-			markObject(vm, (Obj*)e->msg);
+			markValue(vm, e->msg);
 			break;
 		}
 		case OBJ_NATIVE:
@@ -189,7 +198,16 @@ static void freeObject(VM *vm, Obj *object) {
 			FREE(ObjBoundMethod, object);
 			break;
 		case OBJ_CLASS: {
-			FREE(ObjClass, object);
+			ObjClass *klass = (ObjClass*)object;
+			if(klass->cname) {
+				// this means that the class is in static memory, and isn't freeable.
+				// We set its' internal pointers to NULL so we don't accidentally dereference
+				// a pointer to freed memory.
+				klass->name = NULL;
+				klass->methods = NULL;
+			} else {
+				FREE(ObjClass, object);
+			}
 			break;
 		}
 		case OBJ_CLOSURE: {

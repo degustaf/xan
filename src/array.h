@@ -5,6 +5,6 @@
 
 void writeValueArray(VM *vm, ObjArray *array, Value value);
 
-extern classDef arrayDef;
+extern ObjClass arrayDef;
 
 #endif /* XAN_ARRAY_H */

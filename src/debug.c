@@ -64,8 +64,14 @@ static void InstructionD(const char *name, uint32_t bytecode) {
 }
 
 static void InstructionJ(const char *name, uint32_t bytecode) {
-	int16_t constant = (int16_t)RD(bytecode) - JUMP_BIAS;
-	printf("%-16s register %4d\n", name, constant);
+	int16_t constant = RJump(bytecode);
+	printf("%-16s jump %4d\n", name, constant);
+}
+
+static void InstructionAJ(const char *name, uint32_t bytecode) {
+	uint8_t reg = RA(bytecode);
+	int16_t constant = RJump(bytecode);
+	printf("%-16s register %4d jump %d\n", name, reg, constant);
 }
 
 static void callInstruction(const char *name, uint32_t bytecode) {
@@ -210,13 +216,16 @@ void disassembleInstruction(Chunk* chunk, size_t offset) {
 			InstructionABC("OP_SET_SUBSCRIPT", bytecode);
 			break;
 		case OP_BEGIN_TRY:
-			InstructionJ("OP_BEGIN_TRY", bytecode);
+			InstructionAJ("OP_BEGIN_TRY", bytecode);
 			break;
 		case OP_END_TRY:
 			InstructionJ("OP_END_TRY", bytecode);
 			break;
 		case OP_THROW:
 			InstructionA("OP_THROW", bytecode);
+			break;
+		case OP_JUMP_IF_NOT_EXC:
+			InstructionAJ("OP_JUMP_IF_NOT_EXC", bytecode);
 			break;
 		default:
 			printf("Unknown opcode %d\n", OP(bytecode));

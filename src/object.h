@@ -62,7 +62,7 @@ ObjNative *newNative(VM *vm, NativeFn function);
 ObjUpvalue *newUpvalue(VM *vm, Value *slot);
 ObjClass *copyClass(VM *vm, ObjClass *klass);
 void defineNative(VM *vm, ObjTable *t, CallFrame *frame, const NativeDef *f);
-void defineNativeClass(VM *vm, ObjTable *t, CallFrame *frame, classDef *def);
+void defineNativeClass(VM *vm, ObjTable *t, CallFrame *frame, ObjClass *def);
 ObjModule *defineNativeModule(VM *vm, CallFrame *frame, ModuleDef *def);
 ObjArray *duplicateArray(VM *vm, ObjArray *source);
 void setArray(VM *vm, ObjArray *array, int idx, Value v);

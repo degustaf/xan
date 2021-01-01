@@ -1,5 +1,5 @@
-class Exception {
-}
+// class Exception {
+// }
 
 try {
 } catch {

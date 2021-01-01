@@ -1,3 +1,4 @@
 try {
-} catch(e) { // expect runtime error: e
+	throw Exception(1);
+} catch(e) { // expect runtime error: Undefined variable 'e'.
 }

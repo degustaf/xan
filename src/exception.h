@@ -3,12 +3,11 @@
 
 #include "type.h"
 
-extern classDef exceptionDef;
+extern ObjClass exceptionDef;
 
-// TODO convert this to instance of exception class.
 typedef struct {
 	INSTANCE_FIELDS;
-	ObjString *msg;
+	Value msg;
 	size_t topFrame;
 } ObjException;
 

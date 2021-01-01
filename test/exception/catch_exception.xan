@@ -1,0 +1,4 @@
+try {
+	throw Exception(1);
+} catch(Exception e) {
+}

@@ -52,6 +52,8 @@ ObjClass *newClass(VM *vm, ObjString *name) {
 	ObjClass *klass = ALLOCATE_OBJ(ObjClass, OBJ_CLASS);
 	klass->name = name;
 	klass->methods = NULL;
+	klass->cname = NULL;
+	klass->methodsArray = NULL;
 	fwdWriteBarrier(vm, OBJ_VAL(klass));
 	klass->methods = newTable(vm, 0);
 	return klass;
@@ -63,16 +65,20 @@ void defineNative(VM *vm, ObjTable *t, CallFrame *frame, const NativeDef *f) {
 	tableSet(vm, t, AS_STRING(frame->slots[0]), frame->slots[1]);
 }
 
-void defineNativeClass(VM *vm, ObjTable *t, CallFrame *frame, classDef *def) {
-	ObjString *name = copyString(def->name, strlen(def->name), vm);
-	frame->slots[0] = OBJ_VAL(name);
+void defineNativeClass(VM *vm, ObjTable *t, CallFrame *frame, ObjClass *klass) {
+	klass->name = copyString(klass->cname, strlen(klass->cname), vm);
 
-	ObjClass *klass = newClass(vm, name);
+	// klass is statically allocated, so it avoids newClass. This puts it in the linked list of objects for the garbafe collector.
+	klass->obj.next = vm->objects;
+	vm->objects = (Obj*)klass;
+
 	frame->slots[0] = OBJ_VAL(klass);
 
 	CallFrame *frame2 = incFrame(vm, 2, &frame->slots[1], NULL);
-	for(size_t i = 0; def->methods[i].name; i++)
-		defineNative(vm, klass->methods, frame2, &def->methods[i]);
+	klass->methods = newTable(vm, 0);
+	assert(klass->methods);
+	for(size_t i = 0; klass->methodsArray[i].name; i++)
+		defineNative(vm, klass->methods, frame2, &klass->methodsArray[i]);
 	decFrame(vm);
 
 	tableSet(vm, t, klass->name, OBJ_VAL(klass));
@@ -94,8 +100,9 @@ ObjModule *defineNativeModule(VM *vm, CallFrame *frame, ModuleDef *def) {
 	frame->slots[0] = OBJ_VAL(ret);		// For GC.
 
 	CallFrame *frame2 = incFrame(vm, 1, &frame->slots[1], NULL);
-	for(classDef **c = def->classes; *c; c++)
+	for(ObjClass **c = def->classes; *c; c++)
 		defineNativeClass(vm, ret->items, frame2, *c);
+	assert(def->methods);
 	for(NativeDef *m = def->methods; m->name; m++)
 		defineNative(vm, ret->items, frame2, m);
 	decFrame(vm);
@@ -261,7 +268,9 @@ void fprintObject(FILE *restrict stream, Value value) {
 			fprintf(stream, "upvalue");
 			break;
 		case OBJ_EXCEPTION:
-			fprintf(stream, "Error: %s: ", AS_EXCEPTION(value)->msg->chars);
+			fprintf(stream, "Error: ");
+			fprintValue(stream, AS_EXCEPTION(value)->msg);
+			fprintf(stream, ": ");
 			break;
 	}
 }

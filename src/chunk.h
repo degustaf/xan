@@ -61,6 +61,7 @@ typedef enum {
 	OP_BEGIN_TRY,			// Registers: D
 	OP_END_TRY,				// Registers: D
 	OP_THROW,				// Registers: A
+	OP_JUMP_IF_NOT_EXC,		// Registers: A,D ???
 } ByteCode;
 
 #define COMMA ,

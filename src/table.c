@@ -228,7 +228,15 @@ NativeDef tableMethods[] = {
 	{NULL, NULL}
 };
 
-classDef tableDef = {
+ObjClass tableDef = {
+	{
+		OBJ_CLASS,
+		false,
+		NULL
+	},
 	"Table",
-	tableMethods
+	tableMethods,
+	NULL,
+	NULL,
+	false
 };

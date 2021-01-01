@@ -48,7 +48,15 @@ NativeDef arrayMethods[] = {
 	{NULL, NULL}
 };
 
-classDef arrayDef = {
+ObjClass arrayDef = {
+	{
+		OBJ_CLASS,
+		false,
+		NULL,
+	},
 	"Array",
-	arrayMethods
+	arrayMethods,
+	NULL,
+	NULL,
+	false
 };

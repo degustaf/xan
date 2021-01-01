@@ -7,7 +7,7 @@ ObjException *newException(VM *vm) {
 	ObjException *exc = ALLOCATE_OBJ(ObjException, OBJ_EXCEPTION);
 	exc->klass = NULL;
 	exc->fields = NULL;
-	exc->msg = NULL;
+	exc->msg = NIL_VAL;
 	exc->topFrame = vm->frameCount;
 
 	return exc;
@@ -24,14 +24,14 @@ ObjException *ExceptionFormattedStr(VM *vm, const char* format, ...) {
 	vsnprintf(buffer, length + 1, format, args2);
 	va_end(args2);
 	
-	exc->msg = takeString(buffer, length+1, vm);
+	exc->msg = OBJ_VAL(takeString(buffer, length+1, vm));
 
 	return exc;
 }
 
 Value ExceptionInit(VM *vm, int argCount, Value *args) {
 	ObjException *ret = newException(vm);
-	ret->msg = AS_STRING(args[0]);
+	ret->msg = args[0];
 
 	return OBJ_VAL(ret);
 }
@@ -41,7 +41,15 @@ NativeDef exceptionMethods[] = {
 	{NULL, NULL}
 };
 
-classDef exceptionDef = {
+ObjClass exceptionDef = {
+	{
+		OBJ_CLASS,
+		false,
+		NULL
+	},
 	"Exception",
-	exceptionMethods
+	exceptionMethods,
+	NULL,
+	NULL,
+	true
 };

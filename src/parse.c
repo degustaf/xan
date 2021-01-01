@@ -473,16 +473,20 @@ static bool jump_novalue(Chunk *c, OP_position list) {
 	return false;
 }
 
-static size_t emit_jump(Parser *p, ByteCode op) {
+static size_t _emit_jump(Parser *p, ByteCode op, Reg a) {
 	PRINT_FUNCTION;
 	Compiler *c = p->currentCompiler;
 	printPendingJumps(c);
 	OP_position pjl = c->pendingJumpList;
 	c->pendingJumpList = NO_JUMP;
-	OP_position j = emit_AJ(p, op, c->nextReg, (uint16_t)NO_JUMP);
+	OP_position j = emit_AJ(p, op, a, (uint16_t)NO_JUMP);
 	jump_append(p, &j, pjl);
 	printPendingJumps(c);
 	return j;
+}
+
+static size_t emit_jump(Parser *p, ByteCode op) {
+	return _emit_jump(p, op, p->currentCompiler->nextReg);
 }
 
 static void jump_to_here(Parser *p, OP_position list) {
@@ -1298,7 +1302,7 @@ static void super_(Parser *p, expressionDescription *e) {
 		exit(EXIT_COMPILE_ERROR);
 		return;
 	}
-	expressionDescription superKlass = (expressionDescription){NIL_EXTYPE,};
+	expressionDescription superKlass = (expressionDescription){NIL_EXTYPE, {.v = NIL_VAL}, false, NO_JUMP, NO_JUMP};
 	expressionDescription key;
 	Token t = syntheticToken("this");
 	var_lookup(p, p->currentCompiler, &t, e, true);
@@ -1787,53 +1791,75 @@ static void forStatement(Parser *p) {
 	jump_to_here(p, exit_condition);
 }
 
+static bool catchBlock(Parser *p, OP_position *escapelist) {
+	// returns if it was the default catch block.
+	bool default_catch = true;
+	beginScope(p->currentCompiler);
+	if(match(p, TOKEN_LEFT_PAREN)) {
+		default_catch = false;
+		expressionDescription exceptionKlass;
+		consume(p, TOKEN_IDENTIFIER, "Expect Exception class name.");
+		var_lookup(p, p->currentCompiler, &p->previous, &exceptionKlass, true);
+		exprAnyReg(p, &exceptionKlass);
+		jump_append(p, escapelist, _emit_jump(p, OP_JUMP_IF_NOT_EXC, exceptionKlass.u.r.r));
+
+		if(match(p, TOKEN_IDENTIFIER)) {
+			assert(p->currentCompiler->scopeDepth != 0);
+			p->currentCompiler->locals[p->currentCompiler->actVar].name = p->previous;
+			markInitialized(p);
+		}
+		consume(p, TOKEN_RIGHT_PAREN, "Expect ')' after Exception specifier.");
+	}
+	consume(p, TOKEN_LEFT_BRACE, "Expect '{' after 'catch'.");
+	if(p->hadError) return default_catch;
+	block(p);
+	p->currentCompiler->locals[p->currentCompiler->actVar].depth--;
+	p->currentCompiler->locals[p->currentCompiler->actVar].name = (Token){NO_TOKEN, "", 0,0};
+	endScope(p, localIsCaptured(p->currentCompiler));
+	return default_catch;
+}
+
 static void tryStatement(Parser *p) {
 	consume(p, TOKEN_LEFT_BRACE, "Expect '{' after 'try'.");
 	if(p->hadError) return;
+	Compiler *c = p->currentCompiler;
+	beginScope(c);
+	Reg exceptionActVar = addLocal(p, (Token){NO_TOKEN, "", 0,0}) + 1;
+	markInitialized(p);
 	OP_position escapelist = NO_JUMP;
-	OP_position flist = emit_jump(p, OP_BEGIN_TRY);
-	beginScope(p->currentCompiler);
+	OP_position exceptionlist = NO_JUMP;
+	OP_position flist = _emit_jump(p, OP_BEGIN_TRY, exceptionActVar);
+	beginScope(c);
 	block(p);
-	endScope(p, localIsCaptured(p->currentCompiler));
+	endScope(p, localIsCaptured(c));
 	bool default_catch = false;
 	jump_append(p, &escapelist, emit_jump(p, OP_END_TRY));
+
 	while(match(p, TOKEN_CATCH)) {
-		beginScope(p->currentCompiler);
-		if(default_catch)
-			errorAtPrevious(p, "Default 'catch' must be last.");
+		assert(exceptionActVar == c->actVar);
 		jump_to_here(p, flist);
-		if(match(p, TOKEN_LEFT_PAREN)) {
-			expressionDescription exceptionKlass;
-			consume(p, TOKEN_IDENTIFIER, "Expect Exception class name.");
-			var_lookup(p, p->currentCompiler, &p->previous, &exceptionKlass, true);
-			if(match(p, TOKEN_IDENTIFIER)) {
-				expressionDescription exceptionVar;
-				scopeVariable(p, &exceptionVar, &p->previous);
-			}
-			consume(p, TOKEN_RIGHT_PAREN, "Expect ')' after Exception specifier.");
-		} else {
-			default_catch = true;
+		if(default_catch) {
+			errorAtPrevious(p, "Default 'catch' must be last.");
+			return;
 		}
-		consume(p, TOKEN_LEFT_BRACE, "Expect '{' after 'catch'.");
+		default_catch = catchBlock(p, &exceptionlist);
 		if(p->hadError) return;
-		block(p);
-		endScope(p, localIsCaptured(p->currentCompiler));
-		jump_append(p, &escapelist, emit_jump(p, OP_END_TRY));
+		jump_append(p, &escapelist, emit_jump(p, OP_JUMP));
 	}
+
+	jump_to_here(p, exceptionlist);
+	emit_AD(p, OP_THROW, exceptionActVar, 0);
+
 	jump_to_here(p, escapelist);
-	/*
-	expressionDescription e;
-	exprInit(&e, NIL_EXTYPE, 0);
-	exprAnyReg(p, &e);
-	*/
-	Chunk *c = currentChunk(p->currentCompiler);
-	jump_patch_value(p, p->currentCompiler->pendingJumpList, c->count, NO_REG, c->count);
-	p->currentCompiler->pendingJumpList = NO_JUMP;
+	jump_patch_value(p, c->pendingJumpList, currentChunk(c)->count, NO_REG, currentChunk(c)->count);
+	c->pendingJumpList = NO_JUMP;
+	endScope(p, localIsCaptured(c));
 }
 
 static void throwStatement(Parser *p) {
 	expressionDescription e;
 	expression(p, &e);
+	consume(p, TOKEN_SEMICOLON, "Expect ';' after expression.");
 	if(!p->hadError)
 	emit_AD(p, OP_THROW, exprAnyReg(p, &e), 0);
 }
@@ -1911,8 +1937,10 @@ ObjFunction *parse(VM *vm, const char *source, bool printCode) {
 	}
 	endScanner(p.s);
 
-	if(p.hadError)
+	if(p.hadError) {
+		freeChunk(vm, &compiler.chunk);
 		return NULL;
+	}
 
 	ObjFunction *f = endCompiler(&p);
 	return f;

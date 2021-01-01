@@ -40,7 +40,9 @@ static Value concatenate(VM *vm, ObjString *b, ObjString *c) {
 	return OBJ_VAL(result);
 }
 
-#define runtimeError(vm, ...) vm->exception = OBJ_VAL(ExceptionFormattedStr(vm, __VA_ARGS__))
+#define runtimeError(vm, ...) do { \
+	vm->exception = OBJ_VAL(ExceptionFormattedStr(vm, __VA_ARGS__)); \
+} while(false)
 /*
 static void runtimeError(VM *vm, const char* format, ...) {
 	va_list args;
@@ -96,7 +98,6 @@ CallFrame *incFrame(VM *vm, Reg stackUsed, Value *base, ObjClosure *function) {
 	CallFrame *frame = &vm->frames[vm->frameCount++];
 	frame->c = function;
 	frame->slots = base + 1;
-	frame->try_count = 0;
 
 	return frame;
 }
@@ -117,6 +118,8 @@ void initVM(VM *vm) {
 	vm->nextGC = 1024 * 1024;
 	vm->strings = NULL;
 	vm->globals = NULL;
+	vm->frameCount = 0;
+	vm->tryCount = 0;
 
 	vm->initString = NULL;
 	vm->stackSize = BASE_STACK_SIZE;
@@ -132,9 +135,8 @@ void initVM(VM *vm) {
 	vm->strings = newTable(vm, 0);
 	vm->globals = newTable(vm, 0);
 	vm->initString = copyString("init", 4, vm);
-	vm->exception = NIL_VAL;
 
-	CallFrame *frame = incFrame(vm, 2, vm->stack, NULL);
+	CallFrame *frame = incFrame(vm, 2, &vm->stack[1], NULL);
 	ObjModule *builtinM = defineNativeModule(vm, frame, &builtinDef);
 	vm->globals = builtinM->items;
 //		for(const NativeDef *f = builtins; f->name; f++)
@@ -183,6 +185,7 @@ static bool callValue(VM *vm, Value *callee, Reg retCount, Reg argCount) {
 			case OBJ_CLASS: {
 				ObjClass *klass = AS_CLASS(*callee);
 				Value initializer;
+				assert(klass->methods);
 				if(tableGet(klass->methods, vm->initString, &initializer)) {
 					if(IS_NATIVE(initializer)) {
 						*callee = initializer;
@@ -219,6 +222,7 @@ native:
 static bool bindMethod(VM *vm, ObjInstance *instance, ObjClass *klass, ObjString *name, Value *slot) {
 	Value method;
 	assert(instance);
+	assert(klass->methods);
 	if(!tableGet(klass->methods, name, &method)) {
 		runtimeError(vm, "Undefined property '%s'.", name->chars);
 		return false;
@@ -237,6 +241,7 @@ static bool invokeMethod(VM *vm, Value *slot, ObjString *name, Reg retCount, Reg
 		return false;
 	}
 	ObjInstance *instance = AS_INSTANCE(*slot);
+	assert(instance->klass->methods);
 	if(!tableGet(instance->klass->methods, name, &method)) {
 		runtimeError(vm, "Undefined property '%s'.", name->chars);
 		return false;
@@ -286,6 +291,7 @@ static void defineMethod(VM *vm, Value ra, Value rb, Value rc) {
 	assert(IS_STRING(rb));
 	ObjClass *klass = AS_CLASS(ra);
 	ObjString *name = AS_STRING(rb);
+	assert(klass->methods);
 	tableSet(vm, klass->methods, name, rc);
 }
 
@@ -416,6 +422,7 @@ OP_JUMP:
 			case OP_JUMP_IF_FALSE:
 				if(isFalsey(frame->slots[RD(bytecode)])) {
 					bytecode = READ_BYTECODE();
+					assert(OP(bytecode) == OP_JUMP);
 					goto OP_JUMP;
 				}
 				frame->ip++;
@@ -426,6 +433,7 @@ OP_JUMP:
 			case OP_JUMP_IF_TRUE:
 				if(!isFalsey(frame->slots[RD(bytecode)])) {
 					bytecode = READ_BYTECODE();
+					assert(OP(bytecode) == OP_JUMP);
 					goto OP_JUMP;
 				}
 				frame->ip++;
@@ -512,6 +520,8 @@ OP_JUMP:
 					goto exception_unwind;
 				}
 				ObjClass *subclass = AS_CLASS(frame->slots[RA(bytecode)]);
+				assert(subclass->methods);
+				assert(AS_CLASS(superclass)->methods);
 				tableAddAll(vm, AS_CLASS(superclass)->methods, subclass->methods);
 				break;
 			}
@@ -605,34 +615,59 @@ OP_JUMP:
 				break;
 			}
 			case OP_BEGIN_TRY:
-				frame->try_ip[frame->try_count++] = frame->ip + RJump(bytecode);
+				vm->_try[vm->tryCount].ip = (frame->ip + RJump(bytecode)) - frame->c->f->chunk.code;
+				vm->_try[vm->tryCount].exception = RA(bytecode);
+				vm->_try[vm->tryCount].frame = frame - vm->frames;
+				vm->tryCount++;
 				break;
 			case OP_END_TRY:
 				frame->ip += RJump(bytecode);
-				assert(frame->try_count > 0);
-				frame->try_count--;
+				assert(vm->tryCount > 0);
+				vm->tryCount--;
 				break;
+			case OP_JUMP_IF_NOT_EXC: {
+				Value v = frame->slots[RA(bytecode)];
+				Value exception = vm->exception;
+				if(IS_CLASS(v) && IS_EXCEPTION(exception) && AS_EXCEPTION(exception)->klass == AS_CLASS(v))
+					frame->ip += RJump(bytecode);
+				break;
+			}
 			default:
 				fprintf(stderr, "Unimplemented opcode %d.\n", OP(bytecode));
 				return INTERPRET_RUNTIME_ERROR;
-			case OP_THROW:
-				vm->exception = frame->slots[RA(bytecode)];
-exception_unwind: {
-				ObjException *err = AS_EXCEPTION(vm->exception);
-				fprintObject(stderr, OBJ_VAL(err->msg));
-				fputs("\n", stderr);
-				for(size_t i = err->topFrame; i > 0; i--) {
-					CallFrame *frame = &vm->frames[i-1];
-					ObjFunction *f = frame->c->f;
-					size_t instruction = frame->ip - f->chunk.code - 1;	// We have already advanced ip.
-					fprintf(stderr, "[line %zu] in ", frame->c->f->chunk.lines[instruction]);
-					if(f->name == NULL) {
-						fprintf(stderr, "script\n");
-					} else {
-						fprintf(stderr, "%s()\n", f->name->chars);
-					}
+			case OP_THROW: {
+				Value err = frame->slots[RA(bytecode)];
+				if(IS_OBJ(err) && (IS_EXCEPTION(err) || (IS_INSTANCE(err) && AS_INSTANCE(err)->klass->isException))) {
+					vm->exception = err;
+				} else {
+					runtimeError(vm, "Only exceptions can be thrown.");
 				}
-				return INTERPRET_RUNTIME_ERROR;
+			}
+exception_unwind: {
+				if(vm->tryCount > 0) {
+					vm->tryCount--;
+					vm->frameCount = vm->_try[vm->tryCount].frame + 1;
+					frame = &vm->frames[vm->frameCount - 1];
+					frame->ip = frame->c->f->chunk.code + vm->_try[vm->tryCount].ip;
+					frame->slots[vm->_try[vm->tryCount].exception] = vm->exception;
+					break;
+				} else {
+					ObjException *err = AS_EXCEPTION(vm->exception);
+					fprintValue(stderr, err->msg);
+					fputs("\n", stderr);
+					for(size_t i = err->topFrame; i > 0; i--) {
+						CallFrame *frame = &vm->frames[i-1];
+						ObjFunction *f = frame->c->f;
+						size_t instruction = frame->ip - f->chunk.code - 1;	// We have already advanced ip.
+						fprintf(stderr, "[line %zu] in ", frame->c->f->chunk.lines[instruction]);
+						if(f->name == NULL) {
+							fprintf(stderr, "script\n");
+						} else {
+							fprintf(stderr, "%s()\n", f->name->chars);
+						}
+					}
+					return INTERPRET_RUNTIME_ERROR;
+				}
 			}
 		}
 		continue;
@@ -651,10 +686,10 @@ InterpretResult interpret(VM *vm, const char *source, bool printCode) {
 		return INTERPRET_COMPILE_ERROR;
 
 	assert(vm->stackSize > 0);
-	vm->stack[0] = OBJ_VAL(script);
+	vm->stack[1] = OBJ_VAL(script);
 	ObjClosure *cl = newClosure(vm, script);
-	vm->stack[0] = OBJ_VAL(cl);
-	call(vm, cl, vm->stack, 0, 1);
+	vm->stack[1] = OBJ_VAL(cl);
+	call(vm, cl, &vm->stack[1], 0, 1);
 
 	return run(vm);
 }

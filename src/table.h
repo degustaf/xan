@@ -18,6 +18,6 @@ void tableRemoveWhite(ObjTable *t);
 void freeTable(VM *vm, ObjTable *t);
 size_t count(ObjTable *t);
 
-extern classDef tableDef;
+extern ObjClass tableDef;
 
 #endif /* XAN_TABLE_H */

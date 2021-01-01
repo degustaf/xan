@@ -1,0 +1,1 @@
+throw 1; // expect runtime error: Only exceptions can be thrown.
