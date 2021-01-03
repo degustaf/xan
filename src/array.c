@@ -20,9 +20,10 @@ ObjArray *newArray(VM *vm, size_t count) {
 
 Value ArrayInit(VM *vm, int argCount, Value *args) {
 	size_t count = argCount == 0 ? 0 : (size_t)AS_NUMBER(args[0]);
+	Value v = argCount < 2 ? NIL_VAL : args[1];
 	ObjArray *ret = newArray(vm, count);
 	for(size_t i=0; i<ret->count; i++)
-		ret->values[i] = NIL_VAL;
+		ret->values[i] = v;
 	return OBJ_VAL(ret);
 }
 

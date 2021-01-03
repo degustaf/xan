@@ -1,5 +1,6 @@
 #include "vm.h"
 
+#include <math.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -41,7 +42,7 @@ static Value concatenate(VM *vm, ObjString *b, ObjString *c) {
 }
 
 #define runtimeError(vm, ...) do { \
-	vm->exception = OBJ_VAL(ExceptionFormattedStr(vm, __VA_ARGS__)); \
+	ExceptionFormattedStr(vm, __VA_ARGS__); \
 } while(false)
 /*
 static void runtimeError(VM *vm, const char* format, ...) {
@@ -121,6 +122,7 @@ void initVM(VM *vm) {
 	vm->frameCount = 0;
 	vm->tryCount = 0;
 
+	vm->exception = NIL_VAL;
 	vm->initString = NULL;
 	vm->stackSize = BASE_STACK_SIZE;
 	vm->stack = NULL;
@@ -399,6 +401,16 @@ static InterpretResult run(VM *vm) {
 			case OP_SUBVV:	  BINARY_OPVV(NUMBER_VAL, -); break;
 			case OP_MULVV:	  BINARY_OPVV(NUMBER_VAL, *); break;
 			case OP_DIVVV:	  BINARY_OPVV(NUMBER_VAL, /); break;
+			case OP_MODVV: {
+				Value b = frame->slots[RB(bytecode)];
+				Value c = frame->slots[RC(bytecode)];
+				if(!IS_NUMBER(b) || !IS_NUMBER(c)) {
+					runtimeError(vm, "Operands must be numbers.");
+					goto exception_unwind;
+				}
+				frame->slots[RA(bytecode)] = NUMBER_VAL(fmod(AS_NUMBER(b), AS_NUMBER(c)));
+				break;
+			}
 			case OP_RETURN: {
 				if(vm->frameCount == 1)
 					return INTERPRET_OK;
@@ -677,7 +689,10 @@ exception_unwind: {
 #undef READ_BYTECODE
 
 InterpretResult interpret(VM *vm, const char *source, bool printCode) {
+	CallFrame *frame = incFrame(vm, 2, &vm->stack[1], NULL);
+	// The parser needs 2 stack slots to stash values to prevent premature freeing.
 	ObjFunction *script = parse(vm, source, printCode);
+	decFrame(vm);
 #ifndef DEBUG_PRINT_CODE
 	if(printCode)
 		return INTERPRET_OK;

@@ -13,8 +13,9 @@ ObjException *newException(VM *vm) {
 	return exc;
 }
 
-ObjException *ExceptionFormattedStr(VM *vm, const char* format, ...) {
+void ExceptionFormattedStr(VM *vm, const char* format, ...) {
 	ObjException *exc = newException(vm);
+	vm->exception = OBJ_VAL(exc);
 	va_list args1, args2;
 	va_start(args1, format);
 	va_copy(args2, args1);
@@ -25,8 +26,6 @@ ObjException *ExceptionFormattedStr(VM *vm, const char* format, ...) {
 	va_end(args2);
 	
 	exc->msg = OBJ_VAL(takeString(buffer, length+1, vm));
-
-	return exc;
 }
 
 Value ExceptionInit(VM *vm, int argCount, Value *args) {

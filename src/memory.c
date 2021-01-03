@@ -96,6 +96,7 @@ static void markRoots(VM *vm) {
 		markValue(vm, *slot);
 	}
 	markObject(vm, (Obj*)vm->initString);
+	markValue(vm, vm->exception);
 
 	for(size_t i=0; i<vm->frameCount; i++)
 		markObject(vm, (Obj*)vm->frames[i].c);

@@ -1,0 +1,77 @@
+class Random {
+	init() {
+		this.seed = 74755;
+	}
+
+	next() {
+		this.seed = ((this.seed * 1309) + 13849) % 65536;
+		return this.seed;
+	}
+}
+
+var a = Random();
+for(var i = 0; i < 9; i = i + 1)
+	print(a.next());
+// expect: 22896
+// expect: 34761
+// expect: 34014
+// expect: 39231
+// expect: 52540
+// expect: 41445
+// expect: 1546
+// expect: 5947
+// expect: 65224
+
+class Ball {
+	init(rand) {
+		this.x = rand.next() % 500;
+		this.y = rand.next() % 500;
+		this.xVel = (rand.next() % 300) - 150;
+		this.yVel = (rand.next() % 300) - 150;
+	}
+
+	bounce() {
+		var bounced = false;
+		this.x = this.x + this.xVel;
+		this.y = this.y + this.yVel;
+
+		if(this.x > 500) {
+			this.x = 500;
+			this.xVel = 0 - this.xVel;
+			bounced = true;
+		} else if(this.x < 0) {
+			this.x = 0;
+			this.xVel = 0 - this.xVel;
+			bounced = true;
+		}
+
+		if(this.y > 500) {
+			this.y = 500;
+			this.yVel = 0 - this.yVel;
+			bounced = true;
+		} else if(this.y < 0) {
+			this.y = 0;
+			this.yVel = 0 - this.yVel;
+			bounced = true;
+		}
+
+		return bounced;
+	}
+}
+
+var rand = Random();
+var balls = Array(100);
+
+for(var i = 0; i < 100; i = i + 1)
+	balls[i] = Ball(rand);
+
+var start = clock();
+var bounces = 0;
+for(var i = 0; i < 50; i = i + 1) {
+	for(var b = 0; b < 100; b = b + 1) {
+		if(balls[b].bounce())
+			bounces = bounces + 1;
+	}
+}
+print(bounces);	// expect: 1331
+print(clock() - start);

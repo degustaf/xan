@@ -1,13 +1,13 @@
 class Queens {
 	init() {
-		this.filledMaxs = Array(16);
-		this.filledMins = Array(16);
-		this.filledRows = Array(8);
-		this.queenRows = Array(8);
+		this.filledMaxs = Array(16, true);
+		this.filledMins = Array(16, true);
+		this.filledRows = Array(8, true);
+		this.queenRows = Array(8, -1);
 	}
 
 	getRowColumn(r, c) {
-		return this.filledRows[r] and this.filledMaxs[c+r] and this.freeMins[c-r+7];
+		return this.filledRows[r] and this.filledMaxs[c+r] and this.filledMins[c-r+7];
 	}
 
 	setRowColumn(r, c, v) {

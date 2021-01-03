@@ -39,7 +39,7 @@ CLIENT_CFLAGS = 	-I$(PATHI) -Wall -Wextra -pedantic $(ARCH) -std=$(C_STD) -D_POS
 # CLIENT_CFLAGS = 	-I$(PATHI) -Wall -Wextra -pedantic $(ARCH) -std=$(C_STD) -D_POSIX_C_SOURCE=200809L -O3 $(DEF)
 
 LDFLAGS =			$(ARCH) $(DEF)
-LDLIBS =
+LDLIBS =			-lm
 
 COMPILE =			$(CC) $(CFLAGS) -MT $@ -MP -MMD -MF $(PATHD)/$*.Td
 OBJS =				$(addprefix $(PATHLB)/, $(notdir $(SRCS:.c=.o)))

@@ -695,7 +695,7 @@ static void emit_binop_left(Parser *p, ByteCode op, expressionDescription *e) {
 
 static void emit_binop(Parser *p, ByteCode op, expressionDescription *e1, expressionDescription *e2) {
 	PRINT_FUNCTION;
-	if((op == OP_ADDVV) || (op == OP_SUBVV) || (op == OP_MULVV) || (op == OP_DIVVV)) {	// TODO make this a single comparison: op <= ??????
+	if((op == OP_ADDVV) || (op == OP_SUBVV) || (op == OP_MULVV) || (op == OP_DIVVV) || (op == OP_MODVV)) {	// TODO make this a single comparison: op <= ??????
 		emit_arith(p, op, e1, e2);
 	} else if(op == OP_AND) {
 		assert(e1->true_jump == NO_JUMP);
@@ -1135,8 +1135,13 @@ static void table(Parser *p, expressionDescription *e) {
 				expressionIndexed(p, SUBSCRIPT_EXTYPE, e, &key);
 			count++;
 			consume(p, TOKEN_COLON, "Expect ':' after key in table literal.");
+			if(key.type == STRING_EXTYPE)
+				p->vm->frames[p->vm->frameCount-1].slots[0] = key.u.v;
 
 			expression(p, &val);
+			if(val.type == STRING_EXTYPE)
+				p->vm->frames[p->vm->frameCount-1].slots[1] = val.u.v;
+
 			if(ExprIsConstant(&key) && (key.type != NIL_EXTYPE) &&
 					(key.type == STRING_EXTYPE || ExprIsConstantHasNoJump(&val))) {
 				if(t == NULL) {
@@ -1409,6 +1414,7 @@ static void binary(Parser *p, expressionDescription *e, Precedence precedence) {
 			case TOKEN_MINUS: op = OP_SUBVV; break;
 			case TOKEN_STAR: op = OP_MULVV; break;
 			case TOKEN_SLASH: op = OP_DIVVV; break;
+			case TOKEN_PERCENT: op = OP_MODVV; break;
 			case TOKEN_BANG_EQUAL: op = OP_NEQ; break;
 			case TOKEN_EQUAL_EQUAL: op = OP_EQUAL; break;
 			case TOKEN_GREATER: op = OP_GREATER; break;

@@ -32,36 +32,37 @@ typedef enum {
 	OP_SUBVV,				// Registers: A,B,C		// 15
 	OP_MULVV,				// Registers: A,B,C
 	OP_DIVVV,				// Registers: A,B,C
+	OP_MODVV,				// Registers: A,B,C
 	OP_JUMP,				// Registers: D
-	OP_COPY_JUMP_IF_FALSE,	// Registers: A,D
+	OP_COPY_JUMP_IF_FALSE,	// Registers: A,D		// 20
 	OP_OR = OP_COPY_JUMP_IF_FALSE,	// For parsing
-	OP_COPY_JUMP_IF_TRUE,	// Registers: A,D		// 20
+	OP_COPY_JUMP_IF_TRUE,	// Registers: A,D
 	OP_AND = OP_COPY_JUMP_IF_TRUE,	// For parsing
-	OP_JUMP_IF_FALSE,		// Registers: D			// 21
+	OP_JUMP_IF_FALSE,		// Registers: D			// 22
 	OP_JUMP_IF_TRUE,		// Registers: D
 	OP_MOV,					// Registers: A,D
-	OP_CALL,				// Registers: A,B,C
-	OP_GET_UPVAL,			// Registers: A,D		// 25
+	OP_CALL,				// Registers: A,B,C		// 25
+	OP_GET_UPVAL,			// Registers: A,D
 	OP_SET_UPVAL,			// Registers: A,D
 	OP_CLOSURE,				// Registers: A,D
 	OP_CLOSE_UPVALUES,		// Registers: A
-	OP_CLASS,				// Registers: A,D
-	OP_GET_PROPERTY,		// Registers: A,B,C		// 30
+	OP_CLASS,				// Registers: A,D		// 30
+	OP_GET_PROPERTY,		// Registers: A,B,C
 	OP_SET_PROPERTY,		// Registers: A,B,C
 	OP_METHOD,				// Registers: A,B,C
 	// OP_INVOKE,			// Registers: M,N,O,P
 	OP_INHERIT,				// Registers: A,D
-	OP_GET_SUPER,			// Registers: A,B,C
-	OP_NEW_ARRAY,			// Registers: A,D		// 35
+	OP_GET_SUPER,			// Registers: A,B,C		// 35
+	OP_NEW_ARRAY,			// Registers: A,D
 	OP_DUPLICATE_ARRAY,		// Registers: A,D
 	OP_NEW_TABLE,			// Registers: A,D
 	OP_DUPLICATE_TABLE,		// Registers: A,D
-	OP_GET_SUBSCRIPT,		// Registers: A,B,C
-	OP_SET_SUBSCRIPT,		// Registers: A,B,C		// 40
+	OP_GET_SUBSCRIPT,		// Registers: A,B,C		// 40
+	OP_SET_SUBSCRIPT,		// Registers: A,B,C
 	OP_BEGIN_TRY,			// Registers: D
 	OP_END_TRY,				// Registers: D
 	OP_THROW,				// Registers: A
-	OP_JUMP_IF_NOT_EXC,		// Registers: A,D ???
+	OP_JUMP_IF_NOT_EXC,		// Registers: A,D ???	// 45
 } ByteCode;
 
 #define COMMA ,

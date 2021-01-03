@@ -11,6 +11,6 @@ typedef struct {
 	size_t topFrame;
 } ObjException;
 
-ObjException *ExceptionFormattedStr(VM *vm, const char* format, ...);
+void ExceptionFormattedStr(VM *vm, const char* format, ...);
 
 #endif /* XAN_EXCEPTION_H */

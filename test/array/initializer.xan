@@ -19,3 +19,10 @@ for(var i = 0; i < 15; i = i+1)
 // expect: nil
 // expect: nil
 // expect: nil
+
+a = Array(3, true);
+for(var i = 0; i < 3; i+1)
+	print(a[i]);
+// expect: true
+// expect: true
+// expect: true
