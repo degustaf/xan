@@ -19,6 +19,7 @@ for(var i = 0; i < 15; i = i+1)
 // expect: nil
 // expect: nil
 // expect: nil
+print(a.count());	// expect: 15
 
 a = Array(3, true);
 for(var i = 0; i < 3; i+1)

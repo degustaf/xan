@@ -1,5 +1,6 @@
 #include "builtin.h"
 
+#include <math.h>
 #include <time.h>
 
 #include "array.h"
@@ -21,6 +22,14 @@ static Value printNative(__attribute__((unused))VM *vm, __attribute__((unused))i
 	return NIL_VAL;
 }
 
+static Value sqrtNative(__attribute__((unused))VM *vm, __attribute__((unused))int argCount, Value *args) {
+	// if(argCount != 1) {		// TODO add error handling to native functions.
+	// 	runtimeError(vm, "Expected 1 argument but got %d.", argCount);
+	// 	return NIL_VAL;
+	// }
+	return NUMBER_VAL(sqrt(AS_NUMBER(*args)));
+}
+
 ObjClass *BuiltinClasses[] = {
 	&arrayDef,
 	&exceptionDef,
@@ -31,6 +40,7 @@ ObjClass *BuiltinClasses[] = {
 NativeDef BuiltinMethods[] = {
 	{"clock", clockNative},
 	{"print", printNative},
+	{"sqrt", sqrtNative},
 	{NULL, NULL},
 };
 

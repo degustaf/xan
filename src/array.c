@@ -1,5 +1,7 @@
 #include "array.h"
 
+#include <assert.h>
+
 #include "memory.h"
 
 ObjArray *newArray(VM *vm, size_t count) {
@@ -7,7 +9,7 @@ ObjArray *newArray(VM *vm, size_t count) {
 	array->count = 0;
 	array->capacity = 0;
 	array->values = NULL;
-	array->klass = NULL;
+	array->klass = &arrayDef;
 	if(count) {
 		size_t capacity = round_up_pow_2(count);
 		fwdWriteBarrier(vm, OBJ_VAL(array));
@@ -27,10 +29,10 @@ Value ArrayInit(VM *vm, int argCount, Value *args) {
 	return OBJ_VAL(ret);
 }
 
-/*
 Value ArrayCount(VM *vm, int argCount, Value *args) {
+	assert(IS_ARRAY(*args));
+	return NUMBER_VAL(AS_ARRAY(*args)->count);
 }
-*/
 
 void writeValueArray(VM *vm, ObjArray *array, Value value) {
 	if(array->capacity < array->count + 1) {
@@ -45,6 +47,7 @@ void writeValueArray(VM *vm, ObjArray *array, Value value) {
 
 NativeDef arrayMethods[] = {
 	{"init", &ArrayInit},
+	{"count", &ArrayCount},
 	// {"__subscript", &ArrayInit},
 	{NULL, NULL}
 };

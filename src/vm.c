@@ -180,7 +180,7 @@ static bool callValue(VM *vm, Value *callee, Reg retCount, Reg argCount) {
 					return call(vm, (ObjClosure*)bound->method, callee, argCount, retCount);
 				assert(bound->method->type == OBJ_NATIVE);
 				NativeFn native = ((ObjNative*)bound->method)->function;
-				Value result = native(vm, argCount, callee+1);
+				Value result = native(vm, argCount, callee);
 				*callee = result;
 				return true;
 			}
@@ -238,7 +238,7 @@ static bool bindMethod(VM *vm, ObjInstance *instance, ObjClass *klass, ObjString
 
 static bool invokeMethod(VM *vm, Value *slot, ObjString *name, Reg retCount, Reg argCount) {
 	Value method;
-	if(!IS_INSTANCE(*slot)) {
+	if(!HAS_PROPERTIES(*slot)) {
 		runtimeError(vm, "Only instances have properties.");
 		return false;
 	}
@@ -489,23 +489,31 @@ OP_JUMP:
 			case OP_GET_PROPERTY: {	// RA = dest reg; RB = object reg; RC = property reg
 				int16_t rb = ((int16_t)(Reg)(RB(bytecode) + 1))-1;
 				Value v = frame->slots[rb];
-				if(!IS_INSTANCE(v)) {
+				if(IS_INSTANCE(v)) {
+					ObjInstance *instance = AS_INSTANCE(v);
+					ObjString *name = AS_STRING(frame->slots[RC(bytecode)]);
+					if(tableGet(instance->fields, name, &frame->slots[RA(bytecode)])) {
+						break;
+					} else if(bindMethod(vm, instance, instance->klass, name, &frame->slots[RA(bytecode)])) {
+						break;
+					}
+					goto exception_unwind;
+				} else if(IS_ARRAY(v)) {
+					ObjInstance *instance = AS_INSTANCE(v);
+					ObjString *name = AS_STRING(frame->slots[RC(bytecode)]);
+					// Arrays have methods, but no fields.
+					if(bindMethod(vm, instance, instance->klass, name, &frame->slots[RA(bytecode)]))
+						break;
+					goto exception_unwind;
+				} else {
 					runtimeError(vm, "Only instances have properties.");
 					goto exception_unwind;
 				}
-				ObjInstance *instance = AS_INSTANCE(v);
-				ObjString *name = AS_STRING(frame->slots[RC(bytecode)]);
-				if(tableGet(instance->fields, name, &frame->slots[RA(bytecode)])) {
-					break;
-				} else if(bindMethod(vm, instance, instance->klass, name, &frame->slots[RA(bytecode)])) {
-					break;
-				}
-				goto exception_unwind;
 			}
 			case OP_SET_PROPERTY: {
 				int16_t rb = ((int16_t)(Reg)(RB(bytecode) + 1))-1;
 				Value v = frame->slots[rb];
-				if(!IS_INSTANCE(v)) {
+				if(!HAS_PROPERTIES(v)) {
 					runtimeError(vm, "Only instances have fields.");
 					goto exception_unwind;
 				}

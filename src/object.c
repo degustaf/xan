@@ -68,7 +68,7 @@ void defineNative(VM *vm, ObjTable *t, CallFrame *frame, const NativeDef *f) {
 void defineNativeClass(VM *vm, ObjTable *t, CallFrame *frame, ObjClass *klass) {
 	klass->name = copyString(klass->cname, strlen(klass->cname), vm);
 
-	// klass is statically allocated, so it avoids newClass. This puts it in the linked list of objects for the garbafe collector.
+	// klass is statically allocated, so it avoids newClass. This puts it in the linked list of objects for the garbage collector.
 	klass->obj.next = vm->objects;
 	vm->objects = (Obj*)klass;
 

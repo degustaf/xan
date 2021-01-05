@@ -62,13 +62,13 @@ class Ball {
 var rand = Random();
 var balls = Array(100);
 
-for(var i = 0; i < 100; i = i + 1)
+for(var i = 0; i < balls.count(); i = i + 1)
 	balls[i] = Ball(rand);
 
 var start = clock();
 var bounces = 0;
 for(var i = 0; i < 50; i = i + 1) {
-	for(var b = 0; b < 100; b = b + 1) {
+	for(var b = 0; b < balls.count(); b = b + 1) {
 		if(balls[b].bounce())
 			bounces = bounces + 1;
 	}

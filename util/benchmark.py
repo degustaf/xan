@@ -4,6 +4,7 @@ from math import sqrt
 from os import listdir
 from os.path import abspath, dirname, isdir, join, realpath, relpath
 from subprocess import Popen, PIPE
+import sys
 
 def repeat(n, args):
     i = 0
@@ -27,11 +28,13 @@ def runTest(path, n):
     total = 0
     sumSquares = 0
 
+    print("{0: <40}".format(path), end='')
+    sys.stdout.flush()
     for x in repeat(n, args):
         total += x
         sumSquares += x * x
 
-    print("{0: <40}{1: <20}{2: <20}".format(path, total/n, sqrt((sumSquares - total * total / n) / (n-1))))
+    print("{0: <20}{1: <20}".format(total/n, sqrt((sumSquares - total * total / n) / (n-1))))
 
 def walk(dir, callback):
     """
@@ -54,5 +57,5 @@ def run_script(n):
 
 if __name__ == '__main__':
     n = 5
-    print('{0: <40}{1: <20}{2: <20}'.format('5', 'mean', 'std.dev.'))
+    print('{0: <40}{1: <20}{2: <20}'.format(n, 'mean', 'std.dev.'))
     walk(join(dirname(dirname(realpath(__file__))), 'test/benchmark'), run_script(n))

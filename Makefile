@@ -32,7 +32,7 @@ CC = 				gcc
 LINK = 				$(CC)
 AR = 				ar
 C_STD =				c99
-DEF =				-pg -g 
+DEF =				-pg -g
 CFLAGS =			-I$(PATHS) -I$(PATHI) -Wall -Wextra -pedantic $(ARCH) -std=$(C_STD) -D_POSIX_C_SOURCE=200809L $(DEF)
 CLIENT_CFLAGS = 	-I$(PATHI) -Wall -Wextra -pedantic $(ARCH) -std=$(C_STD) -D_POSIX_C_SOURCE=200809L $(DEF)
 # CFLAGS =			-I$(PATHS) -I$(PATHI) -Wall -Wextra -pedantic $(ARCH) -std=$(C_STD) -D_POSIX_C_SOURCE=200809L -O3 $(DEF)

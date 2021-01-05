@@ -24,6 +24,10 @@ static inline bool isObjType(Value v, ObjType t) {
 #define NOTHING
 OBJ_BUILDER(IS_TYPE, NOTHING)
 
+static inline bool HAS_PROPERTIES(Value value) {
+	return IS_INSTANCE(value) || IS_ARRAY(value);
+}
+
 #define AS_ARRAY(value)        ((ObjArray*)AS_OBJ(value))
 #define AS_BOUND_METHOD(value) ((ObjBoundMethod*)AS_OBJ(value))
 #define AS_CLASS(value)        ((ObjClass*)AS_OBJ(value))

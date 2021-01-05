@@ -1,0 +1,44 @@
+fun eval_A(i, j) {
+	return 1.0/((i+j) * 0.5 * (i+j+1) + i + 1);
+}
+
+fun eval_A_times_u(u) {
+	var Au = Array(u.count(), 0);
+	for(var i = 0; i < Au.count(); i = i + 1) {
+		for(var j = 0; j < u.count(); j = j + 1) {
+			Au[i] = Au[i] + eval_A(i, j) * u[j];
+		}
+	}
+	return Au;
+}
+
+fun eval_At_times_u(u) {
+	var Au = Array(u.count(), 0);
+	for(var i = 0; i < Au.count(); i = i + 1) {
+		for(var j = 0; j < u.count(); j = j + 1) {
+			Au[i] = Au[i] + eval_A(j, i) * u[j];
+		}
+	}
+	return Au;
+}
+
+fun eval_AtA_times_u(u) {
+	return eval_At_times_u(eval_A_times_u(u));
+}
+
+var start = clock();
+var u = Array(550, 1);		// TODO up to 5500
+var v;
+for(var i = 0; i < 10; i = i + 1) {
+	v = eval_AtA_times_u(u);
+	u = eval_AtA_times_u(v);
+}
+
+var vBv = 0;
+var vv = 0;
+for(var i = 0; i< u.count(); i = i + 1) {
+	vBv = u[i] * v[i];
+	vv =  v[i] * v[i];
+}
+print(sqrt(vBv / vv));	// expect 1.27422
+print(clock() - start);

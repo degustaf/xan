@@ -1,11 +1,15 @@
 var a = [];
 print(a);	// expect: []
+print(a.count());	// expect: 0
 
 a = [1];
 print(a);	// expect: [1]
+print(a.count());	// expect: 1
 
 a = [1, 2];
 print(a);	// expect: [1, 2]
+print(a.count());	// expect: 2
 
 a = [1, 2, 3 + 4, 5 * 6];
 print(a);	// expect: [1, 2, 7, 30]
+print(a.count());	// expect: 4
