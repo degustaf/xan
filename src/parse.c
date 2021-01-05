@@ -1222,7 +1222,6 @@ static void unary(Parser *p, expressionDescription *e) {
 		case TOKEN_FUN:
 		case TOKEN_VAR:
 			errorAtCurrent(p, "Expect expression.");
-			exit(EXIT_COMPILE_ERROR);
 			break;
 		default:
 			primaryExpression(p, e);
@@ -1242,7 +1241,7 @@ static void uv_mark(Compiler *c, int arg) {
 	c->locals[arg].isCaptured = true;
 }
 
-static uint16_t var_lookup_uv(Parser *p, Compiler *c, uint16_t arg, bool isLocal) {
+static int16_t var_lookup_uv(Parser *p, Compiler *c, uint16_t arg, bool isLocal) {
 	assert(arg <= UINT8_COUNT + 1);
 	uint16_t uv_count = c->uvCount;
 	uint16_t larg = isLocal ? UV_IS_LOCAL | arg : arg;
@@ -1253,7 +1252,7 @@ static uint16_t var_lookup_uv(Parser *p, Compiler *c, uint16_t arg, bool isLocal
 	}
 	if(uv_count == UINT8_COUNT) {
 		errorAtPrevious(p, "Too many closure variables in function.");
-		exit(EXIT_COMPILE_ERROR);
+		return UINT8_COUNT + 1;
 	}
 	c->upvalues[uv_count] = larg;
 	return c->uvCount++;
@@ -1271,9 +1270,12 @@ static int16_t var_lookup(Parser *p, Compiler *c, Token *name, expressionDescrip
 			return arg;
 		} else {
 			arg = var_lookup(p, c->enclosing, name, e, false);
-			assert((-2 <= arg) && (arg <= UINT8_COUNT));
+			assert((-2 <= arg) && (arg <= UINT8_COUNT + 1));
 			if(arg >= -1) {
-				e->u.s.info = var_lookup_uv(p, c, arg + 1, e->type == LOCAL_EXTYPE);
+				int16_t ret = var_lookup_uv(p, c, arg + 1, e->type == LOCAL_EXTYPE);
+				e->u.s.info = ret;
+				if(ret == UINT8_COUNT + 1)
+					return ret;
 				e->type = UPVAL_EXTYPE;
 				e->assignable = true;
 				return e->u.s.info;
@@ -1289,7 +1291,7 @@ static void this_(Parser *p, expressionDescription *e) {
 	PRINT_FUNCTION;
 	if(p->currentClass == NULL) {
 		errorAtPrevious(p, "Cannot use 'this' outside of a class.");
-		exit(EXIT_COMPILE_ERROR);
+		return;
 	}
 	var_lookup(p, p->currentCompiler, &p->previous, e, true);
 	e->assignable = false;
@@ -1304,7 +1306,6 @@ static void super_(Parser *p, expressionDescription *e) {
 		return;
 	} else if(!p->currentClass->hasSuperClass) {
 		errorAtPrevious(p, "Cannot use 'super' in a class with no superclass.");
-		exit(EXIT_COMPILE_ERROR);
 		return;
 	}
 	expressionDescription superKlass = (expressionDescription){NIL_EXTYPE, {.v = NIL_VAL}, false, NO_JUMP, NO_JUMP};
@@ -1369,6 +1370,9 @@ static void primaryExpression(Parser *p, expressionDescription *e) {
 		default:
 			break;
 	}
+
+	if(p->panicMode)
+		return;
 
 	while(true) {
 		if(match(p, TOKEN_LEFT_PAREN)) {
