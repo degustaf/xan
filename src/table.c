@@ -21,7 +21,7 @@ struct sObjTable {
 	Value *entries;
 };
 
-Value TableInit (VM *vm, int argCount, Value *args) {
+bool TableInit (VM *vm, int argCount, Value *args) {
 	assert((argCount & 1) == 0);
 
 	ObjTable *t = newTable(vm, argCount);
@@ -32,7 +32,7 @@ Value TableInit (VM *vm, int argCount, Value *args) {
 		tableSet(vm, t, AS_STRING(args[i]), args[i+1]);
 	}
 
-	return args[-1];
+	return true;
 }
 
 static Value* findEntry(Value *entries, ssize_t capacityMask, ObjString *key) {

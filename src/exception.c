@@ -28,11 +28,16 @@ void ExceptionFormattedStr(VM *vm, const char* format, ...) {
 	exc->msg = OBJ_VAL(takeString(buffer, length+1, vm));
 }
 
-Value ExceptionInit(VM *vm, int argCount, Value *args) {
+bool ExceptionInit(VM *vm, int argCount, Value *args) {
+	if(argCount > 1) {
+		ExceptionFormattedStr(vm, "Method 'init' of class 'exception' expected 1 argument but got %d.", argCount);
+		return false;
+	}
 	ObjException *ret = newException(vm);
 	ret->msg = args[0];
 
-	return OBJ_VAL(ret);
+	args[-1] = OBJ_VAL(ret);
+	return true;
 }
 
 NativeDef exceptionMethods[] = {

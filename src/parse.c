@@ -1213,7 +1213,7 @@ static void unary(Parser *p, expressionDescription *e) {
 	PRINT_FUNCTION;
 	PRINT_TOKEN;
 
-	ByteCode op;
+	ByteCode op = 0;
 	switch(p->current.type) {
 		case TOKEN_BANG: op = OP_NOT; break;
 		case TOKEN_MINUS: op = OP_NEGATE; break;

@@ -8,26 +8,33 @@
 #include "object.h"
 #include "table.h"
 
-static Value clockNative(__attribute__((unused))VM *vm, __attribute__((unused))int argCount, __attribute__((unused))Value *args) {
-	return NUMBER_VAL((double)clock() / CLOCKS_PER_SEC);
+static bool clockNative(VM *vm, int argCount, Value *args) {
+	if(argCount != 0) {
+		ExceptionFormattedStr(vm, "Function 'clock' expected 0 argument but got %d.", argCount);
+		return false;
+	}
+	args[-1] = NUMBER_VAL((double)clock() / CLOCKS_PER_SEC);
+	return true;
 }
 
-static Value printNative(__attribute__((unused))VM *vm, __attribute__((unused))int argCount, Value *args) {
-	// if(argCount != 1) {		// TODO add error handling to native functions.
-	// 	runtimeError(vm, "Expected 1 argument but got %d.", argCount);
-	// 	return NIL_VAL;
-	// }
+static bool printNative(VM *vm, int argCount, Value *args) {
+	if(argCount != 1) {
+		ExceptionFormattedStr(vm, "Function 'print' expected 1 argument but got %d.", argCount);
+		return false;
+	}
 	printValue(*args);
 	printf("\n");
-	return NIL_VAL;
+	args[-1] = NIL_VAL;
+	return true;
 }
 
-static Value sqrtNative(__attribute__((unused))VM *vm, __attribute__((unused))int argCount, Value *args) {
-	// if(argCount != 1) {		// TODO add error handling to native functions.
-	// 	runtimeError(vm, "Expected 1 argument but got %d.", argCount);
-	// 	return NIL_VAL;
-	// }
-	return NUMBER_VAL(sqrt(AS_NUMBER(*args)));
+static bool sqrtNative(VM *vm, int argCount, Value *args) {
+	if(argCount != 1) {
+		ExceptionFormattedStr(vm, "Function 'sqrt' expected 1 argument but got %d.", argCount);
+		return false;
+	}
+	args[-1] = NUMBER_VAL(sqrt(AS_NUMBER(*args)));
+	return true;
 }
 
 ObjClass *BuiltinClasses[] = {

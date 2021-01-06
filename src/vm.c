@@ -180,9 +180,7 @@ static bool callValue(VM *vm, Value *callee, Reg retCount, Reg argCount) {
 					return call(vm, (ObjClosure*)bound->method, callee, argCount, retCount);
 				assert(bound->method->type == OBJ_NATIVE);
 				NativeFn native = ((ObjNative*)bound->method)->function;
-				Value result = native(vm, argCount, callee);
-				*callee = result;
-				return true;
+				return native(vm, argCount, callee + 1);
 			}
 			case OBJ_CLASS: {
 				ObjClass *klass = AS_CLASS(*callee);
@@ -208,9 +206,7 @@ static bool callValue(VM *vm, Value *callee, Reg retCount, Reg argCount) {
 native:
 			case OBJ_NATIVE: {
 				NativeFn native = AS_NATIVE(*callee);
-				Value result = native(vm, argCount, callee+1);
-				*callee = result;
-				return true;
+				return native(vm, argCount, callee + 1);
 			}
 			default:
 				break;
@@ -258,9 +254,7 @@ static bool invokeMethod(VM *vm, Value *slot, ObjString *name, Reg retCount, Reg
 		return call(vm, (ObjClosure*)bound->method, slot, argCount, retCount);
 	assert(bound->method->type == OBJ_NATIVE);
 	NativeFn native = ((ObjNative*)bound->method)->function;
-	Value result = native(vm, argCount, slot+1);
-	*slot = result;
-	return true;
+	return native(vm, argCount, slot+1);
 
 }
 
@@ -415,11 +409,13 @@ static InterpretResult run(VM *vm) {
 				if(vm->frameCount == 1)
 					return INTERPRET_OK;
 
-				// uint16_t d = RD(bytecode);
+				uint16_t count = RD(bytecode) - 1;
 				int16_t ra = ((int16_t)(Reg)(RA(bytecode) + 1))-1;
 				closeUpvalues(vm, frame->slots - 1);
 				// ensure we close this in slots[-1] as an upvalue before moving return value.
-				frame->slots[-1] = frame->slots[ra];
+				for(size_t i = 0; i < count; i++) {
+					frame->slots[-1 + i] = frame->slots[ra + i];
+				}
 				frame = decFrame(vm);
 				break;
 			}
@@ -697,7 +693,7 @@ exception_unwind: {
 #undef READ_BYTECODE
 
 InterpretResult interpret(VM *vm, const char *source, bool printCode) {
-	CallFrame *frame = incFrame(vm, 2, &vm->stack[1], NULL);
+	incFrame(vm, 2, &vm->stack[1], NULL);
 	// The parser needs 2 stack slots to stash values to prevent premature freeing.
 	ObjFunction *script = parse(vm, source, printCode);
 	decFrame(vm);

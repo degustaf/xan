@@ -202,7 +202,7 @@ struct sVM {
 	Obj** grayStack;
 };
 
-typedef Value (*NativeFn)(VM *vm, int argCount, Value *args);
+typedef bool (*NativeFn)(VM *vm, int argCount, Value *args);
 
 typedef struct {
 	Obj obj;

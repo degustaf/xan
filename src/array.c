@@ -2,6 +2,7 @@
 
 #include <assert.h>
 
+#include "exception.h"
 #include "memory.h"
 
 ObjArray *newArray(VM *vm, size_t count) {
@@ -20,18 +21,28 @@ ObjArray *newArray(VM *vm, size_t count) {
 	return array;
 }
 
-Value ArrayInit(VM *vm, int argCount, Value *args) {
+static bool ArrayInit(VM *vm, int argCount, Value *args) {
+	if(argCount > 2) {
+		ExceptionFormattedStr(vm, "Method 'init' of class 'array' expected 0 argument but got %d.", argCount);
+		return false;
+	}
 	size_t count = argCount == 0 ? 0 : (size_t)AS_NUMBER(args[0]);
 	Value v = argCount < 2 ? NIL_VAL : args[1];
 	ObjArray *ret = newArray(vm, count);
+	args[-1] = OBJ_VAL(ret);
 	for(size_t i=0; i<ret->count; i++)
 		ret->values[i] = v;
-	return OBJ_VAL(ret);
+	return true;
 }
 
-Value ArrayCount(VM *vm, int argCount, Value *args) {
-	assert(IS_ARRAY(*args));
-	return NUMBER_VAL(AS_ARRAY(*args)->count);
+static bool ArrayCount(VM *vm, int argCount, Value *args) {
+	if(argCount > 0) {
+		ExceptionFormattedStr(vm, "Method 'count' of class 'array' expected 0 argument but got %d.", argCount);
+		return false;
+	}
+	assert(IS_ARRAY(args[-1]));
+	args[-1] = NUMBER_VAL(AS_ARRAY(args[-1])->count);
+	return true;
 }
 
 void writeValueArray(VM *vm, ObjArray *array, Value value) {
