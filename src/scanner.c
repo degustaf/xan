@@ -89,6 +89,22 @@ static char peekNext(const Scanner *const s) {
 	return s->current[1];
 }
 
+static bool multilineComment(Scanner *s) {
+	size_t nesting = 1;
+	while(nesting > 0) {
+		if(isAtEnd(s)) {
+			return true;
+		} else if(match(s, '*') && match(s, '/')) {
+			nesting--;
+		} else if(match(s, '/') && match(s, '*')) {
+			nesting++;
+		} else {
+			advance(s);
+		}
+	}
+	return false;
+}
+
 static void skipWhitespace(Scanner *s) {
 	while(true) {
 		char c = peek(s);
@@ -99,14 +115,6 @@ static void skipWhitespace(Scanner *s) {
 			case '\r':
 			case '\t':
 				advance(s);
-				break;
-			case '/':
-				if(peekNext(s) == '/') {
-					while(peek(s) != '\n' && !isAtEnd(s))
-						advance(s);
-				} else {
-					return;
-				}
 				break;
 			default:
 				return;
@@ -206,42 +214,55 @@ static Token identifier(Scanner *s) {
 }
 
 Token scanToken(Scanner *s) {
-	skipWhitespace(s);
-	s->start = s->current;
-	if(isAtEnd(s))
-		return makeToken(s, TOKEN_EOF);
-	char c = advance(s);
-	if(isDigit(c))
-		return number(s);
-	if(isAlpha(c))
-		return identifier(s);
+	while(true) {
+		skipWhitespace(s);
+		s->start = s->current;
+		if(isAtEnd(s))
+			return makeToken(s, TOKEN_EOF);
+		char c = advance(s);
+		if(isDigit(c))
+			return number(s);
+		if(isAlpha(c))
+			return identifier(s);
 
-	switch(c) {
-		case '(': return makeToken(s, TOKEN_LEFT_PAREN);
-		case ')': return makeToken(s, TOKEN_RIGHT_PAREN);
-		case '{': return makeToken(s, TOKEN_LEFT_BRACE);
-		case '}': return makeToken(s, TOKEN_RIGHT_BRACE);
-		case '[': return makeToken(s, TOKEN_LEFT_BRACKET);
-		case ']': return makeToken(s, TOKEN_RIGHT_BRACKET);
-		case ';': return makeToken(s, TOKEN_SEMICOLON);
-		case ':': return makeToken(s, TOKEN_COLON);
-	   	case ',': return makeToken(s, TOKEN_COMMA);
-		case '.': return makeToken(s, TOKEN_DOT);
-		case '-': return makeToken(s, TOKEN_MINUS);
-		case '+': return makeToken(s, TOKEN_PLUS);
-		case '/': return makeToken(s, TOKEN_SLASH);
-		case '%': return makeToken(s, TOKEN_PERCENT);
-		case '*': return makeToken(s, TOKEN_STAR);
-		case '!':
-			return makeToken(s, match(s, '=') ? TOKEN_BANG_EQUAL : TOKEN_BANG);
-		case '=':
-			return makeToken(s, match(s, '=') ? TOKEN_EQUAL_EQUAL : TOKEN_EQUAL);
-		case '<':
-			return makeToken(s, match(s, '=') ? TOKEN_LESS_EQUAL : TOKEN_LESS);
-		case '>':
-			return makeToken(s, match(s, '=') ? TOKEN_GREATER_EQUAL : TOKEN_GREATER);
-		case '"': return string(s);
+		switch(c) {
+			case '(': return makeToken(s, TOKEN_LEFT_PAREN);
+			case ')': return makeToken(s, TOKEN_RIGHT_PAREN);
+			case '{': return makeToken(s, TOKEN_LEFT_BRACE);
+			case '}': return makeToken(s, TOKEN_RIGHT_BRACE);
+			case '[': return makeToken(s, TOKEN_LEFT_BRACKET);
+			case ']': return makeToken(s, TOKEN_RIGHT_BRACKET);
+			case ';': return makeToken(s, TOKEN_SEMICOLON);
+			case ':': return makeToken(s, TOKEN_COLON);
+		   	case ',': return makeToken(s, TOKEN_COMMA);
+			case '.': return makeToken(s, TOKEN_DOT);
+			case '-': return makeToken(s, TOKEN_MINUS);
+			case '+': return makeToken(s, TOKEN_PLUS);
+			case '%': return makeToken(s, TOKEN_PERCENT);
+			case '*': return makeToken(s, TOKEN_STAR);
+			case '!':
+				return makeToken(s, match(s, '=') ? TOKEN_BANG_EQUAL : TOKEN_BANG);
+			case '=':
+				return makeToken(s, match(s, '=') ? TOKEN_EQUAL_EQUAL : TOKEN_EQUAL);
+			case '<':
+				return makeToken(s, match(s, '=') ? TOKEN_LESS_EQUAL : TOKEN_LESS);
+			case '>':
+				return makeToken(s, match(s, '=') ? TOKEN_GREATER_EQUAL : TOKEN_GREATER);
+			case '"': return string(s);
+			case '/': {
+				if(match(s, '/')) {
+					while(peek(s) != '\n' && !isAtEnd(s))
+						advance(s);
+					continue;
+				} else if(match(s, '*')) {
+					if(multilineComment(s))
+						return errorToken(s, "Unterminated comment.");
+					continue;
+				}
+				return makeToken(s, TOKEN_SLASH);
+			}
+		}
+
+		return errorToken(s, "Unexpected character.");
 	}
-
-	return errorToken(s, "Unexpected character.");
 }

@@ -1,0 +1,6 @@
+/* First
+/* Second
+closing second */
+print("bad");
+closing first */
+print("ok");	// expect: ok

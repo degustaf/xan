@@ -1,0 +1,3 @@
+/* print("bad"); */
+
+print("ok");	// expect: ok
