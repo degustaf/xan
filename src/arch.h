@@ -10,6 +10,9 @@
 #elif defined(__i386__)
 	#define X86_ARCH
 	#define ENDIAN	XAN_LITTLE_ENDIAN
+#elif defined(__s390x__) || defined(__zarch__)
+	#define s390xARCH
+	#define ENDIAN	XAN_BIG_ENDIAN
 #else
 	#error "Unsupported Architecture."
 #endif

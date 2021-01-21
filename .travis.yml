@@ -23,12 +23,12 @@ jobs:
         - os: osx
           arch: arm64
 
+before_install:
+    - sudo apt-get update
+
 addons:
     apt:
         packages:
             - gcc-multilib
-
-sudo: required
-dist: trusty
 
 script: make ARCH=${ARCH} test
