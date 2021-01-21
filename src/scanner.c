@@ -158,6 +158,7 @@ static TokenType checkKeyword(const Scanner *s, size_t start, size_t length, con
 static TokenType identifierType(Scanner *s) {
 	switch(s->start[0]) {
 		case 'a': return checkKeyword(s, 1, 2, "nd", TOKEN_AND);
+		case 'b': return checkKeyword(s, 1, 4, "reak", TOKEN_BREAK);
 		case 'c':
 			if(s->current - s->start > 1) {
 				switch(s->start[1]) {

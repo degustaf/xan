@@ -7,9 +7,9 @@ compiler:
     - clang
 arch:
     - amd64
-    - ppc64le
-    - s390x
-    - arm64
+      # - ppc64le   apt-get can't find multilib for this arch
+      # - arm64     apt-get can't find multilib for this arch
+      # - s390x     Build fails. Don't have hardware to debug on.
 env:
     - ARCH="-m64"
     - ARCH="-m32"

@@ -1730,6 +1730,18 @@ static void varDeclaration(Parser *p) {
 	}
 }
 
+static void breakStatement(Parser *p) {
+	if(!p->currentCompiler->inLoop) {
+		errorAtPrevious(p, "Can't use 'break' outside of a loop.");
+		return;
+	}
+
+	consume(p, TOKEN_SEMICOLON, "Expect ';' after 'break'.");
+	OP_position c = emit_jump(p, OP_JUMP);
+	jump_append(p, &c, p->currentCompiler->pendingBreakList);
+	p->currentCompiler->pendingBreakList = c;
+}
+
 static void continueStatement(Parser *p) {
 	if(!p->currentCompiler->inLoop) {
 		errorAtPrevious(p, "Can't use 'continue' outside of a loop.");
@@ -1760,11 +1772,12 @@ static void forStatement(Parser *p) {
 	OP_position outerPendingContinueList = p->currentCompiler->pendingContinueList;
 	p->currentCompiler->pendingContinueList = NO_JUMP;
 
-	OP_position exit_condition = NO_JUMP;
+	OP_position outerPendingBreakList = p->currentCompiler->pendingBreakList;
+	p->currentCompiler->pendingBreakList = NO_JUMP;
 	if(p->panicMode) {
 		synchronize(p);
 	} else if(!match(p, TOKEN_SEMICOLON)) {
-		exit_condition = expressionCondition(p);
+		p->currentCompiler->pendingBreakList = expressionCondition(p);
 		consume(p, TOKEN_SEMICOLON, "Expected ';' after loop condition.");
 	}
 
@@ -1809,7 +1822,8 @@ static void forStatement(Parser *p) {
 
 	endScope(p, false);
 	jump_patch(p, emit_jump(p, OP_JUMP), loopStart);
-	jump_to_here(p, exit_condition);
+	jump_to_here(p, p->currentCompiler->pendingBreakList);
+	p->currentCompiler->pendingBreakList = outerPendingBreakList;
 	c->inLoop = inSurroundingLoop;
 }
 
@@ -1821,8 +1835,8 @@ static void whileStatement(Parser *p) {
 	OP_position loopStart = p->currentCompiler->last_target = currentChunk(p->currentCompiler)->count;
 	OP_position outerPendingContinueList = p->currentCompiler->pendingContinueList;
 	p->currentCompiler->pendingContinueList = NO_JUMP;
-
-	OP_position exit_condition = expressionCondition(p);
+	OP_position outerPendingBreakList = p->currentCompiler->pendingBreakList;
+	p->currentCompiler->pendingBreakList = expressionCondition(p);
 	consume(p, TOKEN_RIGHT_PAREN, "Expect ')' after condition.");
 
 	statement(p);
@@ -1832,7 +1846,8 @@ static void whileStatement(Parser *p) {
 	p->currentCompiler->pendingContinueList = outerPendingContinueList;
 	p->currentCompiler->inLoop = inSurroundingLoop;
 
-	jump_to_here(p, exit_condition);
+	jump_to_here(p, p->currentCompiler->pendingBreakList);
+	p->currentCompiler->pendingBreakList = outerPendingBreakList;
 }
 
 static bool catchBlock(Parser *p, OP_position *escapelist) {
@@ -1910,7 +1925,9 @@ static void throwStatement(Parser *p) {
 
 static void statement(Parser *p) {
 	PRINT_FUNCTION;
-	if(match(p, TOKEN_CONTINUE)) {
+	if(match(p, TOKEN_BREAK)) {
+		breakStatement(p);
+	} else if(match(p, TOKEN_CONTINUE)) {
 		continueStatement(p);
 	} else if(match(p, TOKEN_IF)) {
 		ifStatement(p);

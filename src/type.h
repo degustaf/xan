@@ -160,6 +160,7 @@ typedef struct Compiler {
 	int arity;
 	int scopeDepth;
 	OP_position pendingJumpList;
+	OP_position pendingBreakList;
 	OP_position pendingContinueList;
 	OP_position last_target;
 	bool inLoop;
