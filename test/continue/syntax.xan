@@ -1,0 +1,55 @@
+var i = 0;
+while(i < 3) {
+	print("ok");
+	i = i + 1;
+	continue;
+	print("bad");
+}
+// expect: ok
+// expect: ok
+// expect: ok
+
+i = 0;
+while(i < 3) {
+	i = i + 1;
+	if(i == 2)
+		continue;
+	print(i);
+}
+// expect: 1
+// expect: 3
+
+i = 0;
+while(i < 3) {
+	i = i + 1;
+	var j = 0;
+	while(j < 3) {
+		j = j + 1;
+		if(j == 2)
+			continue;
+		print(j);
+	}
+}
+// expect: 1
+// expect: 3
+// expect: 1
+// expect: 3
+// expect: 1
+// expect: 3
+
+for(var k=0; k<3; k = k + 1) {
+	print("ok");
+	k = k + 1;
+	continue;
+	print("bad");
+}
+// expect: ok
+// expect: ok
+
+for(var k=0; k<3; k = k + 1) {
+	if(k == 1)
+		continue;
+	print(k);
+}
+// expect: 0
+// expect: 2

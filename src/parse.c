@@ -814,6 +814,9 @@ static void initCompiler(Parser *p, Compiler *compiler, FunctionType type) {
 	if(type != TYPE_SCRIPT)
 		compiler->name = copyString(p->previous.start, p->previous.length, p->vm);
 	compiler->pendingJumpList = NO_JUMP;
+	compiler->pendingContinueList = NO_JUMP;
+	compiler->last_target = NO_JUMP;
+	compiler->inLoop = false;
 	compiler->nextReg = compiler->actVar = compiler->maxReg = 0;
 #ifdef DEBUG_PARSER
 	fprintf(stderr, "nextReg = %d\n", compiler->nextReg);
@@ -1519,18 +1522,6 @@ static void ifStatement(Parser *p) {
 	jump_to_here(p, escapelist);
 }
 
-static void whileStatement(Parser *p) {
-	consume(p, TOKEN_LEFT_PAREN, "Expect '(' after 'while'.");
-	OP_position start, exit_condition;
-	start = p->currentCompiler->last_target = currentChunk(p->currentCompiler)->count;
-	exit_condition = expressionCondition(p);
-	consume(p, TOKEN_RIGHT_PAREN, "Expect ')' after condition.");
-
-	statement(p);
-	jump_patch(p, emit_jump(p, OP_JUMP), start);
-	jump_to_here(p, exit_condition);
-}
-
 static void beginScope(Compiler *current) {
 	current->scopeDepth++;
 }
@@ -1739,6 +1730,18 @@ static void varDeclaration(Parser *p) {
 	}
 }
 
+static void continueStatement(Parser *p) {
+	if(!p->currentCompiler->inLoop) {
+		errorAtPrevious(p, "Can't use 'continue' outside of a loop.");
+		return;
+	}
+
+	consume(p, TOKEN_SEMICOLON, "Expect ';' after 'continue'.");
+	OP_position c = emit_jump(p, OP_JUMP);
+	jump_append(p, &c, p->currentCompiler->pendingContinueList);
+	p->currentCompiler->pendingContinueList = c;
+}
+
 static void forStatement(Parser *p) {
 	Compiler *c = p->currentCompiler;
 	consume(p, TOKEN_LEFT_PAREN, "Expect '(' after 'for'.");
@@ -1751,7 +1754,11 @@ static void forStatement(Parser *p) {
 	} else {
 		expressionStatement(p);
 	}
-	OP_position start = c->last_target = currentChunk(c)->count;
+	bool inSurroundingLoop = c->inLoop;
+	c->inLoop = true;
+	OP_position loopStart = c->last_target = currentChunk(c)->count;
+	OP_position outerPendingContinueList = p->currentCompiler->pendingContinueList;
+	p->currentCompiler->pendingContinueList = NO_JUMP;
 
 	OP_position exit_condition = NO_JUMP;
 	if(p->panicMode) {
@@ -1780,6 +1787,10 @@ static void forStatement(Parser *p) {
 		for(l = &c->locals[c->actVar]; (l >= c->locals) && (l->depth >= c->scopeDepth) ; l--) {}
 		emit_AD(p, OP_CLOSE_UPVALUES, l - c->locals, 0);
 	}
+
+	jump_to_here(p, c->pendingContinueList);
+	p->currentCompiler->pendingContinueList = outerPendingContinueList;
+
 	if(cachedScanner) {
 		Scanner *s = p->s;
 		p->s = cachedScanner;
@@ -1797,7 +1808,30 @@ static void forStatement(Parser *p) {
 	}
 
 	endScope(p, false);
-	jump_patch(p, emit_jump(p, OP_JUMP), start);
+	jump_patch(p, emit_jump(p, OP_JUMP), loopStart);
+	jump_to_here(p, exit_condition);
+	c->inLoop = inSurroundingLoop;
+}
+
+static void whileStatement(Parser *p) {
+	PRINT_FUNCTION;
+	consume(p, TOKEN_LEFT_PAREN, "Expect '(' after 'while'.");
+	bool inSurroundingLoop = p->currentCompiler->inLoop;
+	p->currentCompiler->inLoop = true;
+	OP_position loopStart = p->currentCompiler->last_target = currentChunk(p->currentCompiler)->count;
+	OP_position outerPendingContinueList = p->currentCompiler->pendingContinueList;
+	p->currentCompiler->pendingContinueList = NO_JUMP;
+
+	OP_position exit_condition = expressionCondition(p);
+	consume(p, TOKEN_RIGHT_PAREN, "Expect ')' after condition.");
+
+	statement(p);
+
+	jump_append(p, &p->currentCompiler->pendingContinueList, emit_jump(p, OP_JUMP));
+	jump_patch(p, p->currentCompiler->pendingContinueList, loopStart);
+	p->currentCompiler->pendingContinueList = outerPendingContinueList;
+	p->currentCompiler->inLoop = inSurroundingLoop;
+
 	jump_to_here(p, exit_condition);
 }
 
@@ -1876,24 +1910,26 @@ static void throwStatement(Parser *p) {
 
 static void statement(Parser *p) {
 	PRINT_FUNCTION;
-	if(match(p, TOKEN_FOR)) {
-		forStatement(p);
+	if(match(p, TOKEN_CONTINUE)) {
+		continueStatement(p);
 	} else if(match(p, TOKEN_IF)) {
 		ifStatement(p);
-	} else if(match(p, TOKEN_RETURN)) {
-		returnStatement(p);
-	} else if(match(p, TOKEN_WHILE)) {
-		whileStatement(p);
+	} else if(match(p, TOKEN_FOR)) {
+		forStatement(p);
 	} else if(match(p, TOKEN_LEFT_BRACE)) {
 		beginScope(p->currentCompiler);
 		block(p);
 		endScope(p, localIsCaptured(p->currentCompiler));
 	} else if(match(p, TOKEN_FUN)) {
 		funDeclaration(p);
+	} else if(match(p, TOKEN_RETURN)) {
+		returnStatement(p);
 	} else if(match(p, TOKEN_TRY)) {
 		tryStatement(p);
 	} else if(match(p, TOKEN_THROW)) {
 		throwStatement(p);
+	} else if(match(p, TOKEN_WHILE)) {
+		whileStatement(p);
 	} else {
 		expressionStatement(p);
 	}

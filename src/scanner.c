@@ -163,6 +163,7 @@ static TokenType identifierType(Scanner *s) {
 				switch(s->start[1]) {
 					case 'a': return checkKeyword(s, 2, 3, "tch", TOKEN_CATCH);
 					case 'l': return checkKeyword(s, 2, 3, "ass", TOKEN_CLASS);
+					case 'o': return checkKeyword(s, 2, 6, "ntinue", TOKEN_CONTINUE);
 				}
 			}
 		case 'e': return checkKeyword(s, 1, 3, "lse", TOKEN_ELSE);

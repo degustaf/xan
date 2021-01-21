@@ -1,0 +1,11 @@
+var k = 0;
+for(var i=0; i<3; i = i + 1) {
+	if(i == 1)
+		continue;
+	for(var j=0; j<3; j = j + 1) {
+		if(j == 1)
+			continue;
+		k = k + 1;
+	}
+}
+print(k);	// expect: 4
