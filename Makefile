@@ -33,11 +33,8 @@ LINK = 				$(CC)
 AR = 				ar
 C_STD =				c99
 DEF =				-pg -g
-# DEF =
-# CFLAGS =			-I$(PATHS) -I$(PATHI) -Wall -Wextra -pedantic $(ARCH) -std=$(C_STD) -D_POSIX_C_SOURCE=200809L $(DEF)
-# CLIENT_CFLAGS = 	-I$(PATHI) -Wall -Wextra -pedantic $(ARCH) -std=$(C_STD) -D_POSIX_C_SOURCE=200809L $(DEF)
-CFLAGS =			-I$(PATHS) -I$(PATHI) -Wall -Wextra -pedantic $(ARCH) -std=$(C_STD) -D_POSIX_C_SOURCE=200809L -O3 $(DEF)
-CLIENT_CFLAGS = 	-I$(PATHI) -Wall -Wextra -pedantic $(ARCH) -std=$(C_STD) -D_POSIX_C_SOURCE=200809L -O3 $(DEF)
+CFLAGS =			-I$(PATHS) -I$(PATHI) -Wall -Wextra -pedantic $(ARCH) -std=$(C_STD) -D_POSIX_C_SOURCE=200809L $(DEF)
+CLIENT_CFLAGS = 	-I$(PATHI) -Wall -Wextra -pedantic $(ARCH) -std=$(C_STD) -D_POSIX_C_SOURCE=200809L $(DEF)
 
 LDFLAGS =			$(ARCH) $(DEF)
 LDLIBS =			-lm
@@ -107,7 +104,10 @@ test: xan$(TARGET_EXTENSION)
 unittest: $(UBINS)
 
 release: clean
-	$(MAKE) DEF=-DNDEBUG test
+	$(MAKE) DEF="-DNDEBUG -O3" test
+
+benchmark: release
+	python3 util/benchmark.py
 
 clean:
 	$(CLEANUP) $(PATHS)/*.d
