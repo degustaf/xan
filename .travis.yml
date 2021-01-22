@@ -23,9 +23,6 @@ jobs:
         - os: osx
           arch: arm64
 
-before_install:
-    - sudo apt-get update
-
 addons:
     apt:
         packages:
