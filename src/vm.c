@@ -291,6 +291,24 @@ static void defineMethod(VM *vm, Value ra, Value rb, Value rc) {
 	tableSet(vm, klass->methods, name, rc);
 }
 
+#ifdef COMPUTED_GOTO
+	#define SWITCH DISPATCH;
+	#define DISPATCH \
+		bytecode = READ_BYTECODE(); \
+		goto *opcodes[OP(bytecode)]
+	#define TARGET(op) TARGET_##op
+	#define DEFAULT
+#else
+	#define SWITCH \
+		bytecode = READ_BYTECODE(); \
+		switch(OP(bytecode))
+	#define DISPATCH continue
+	#define TARGET(op) case op
+	#define DEFAULT \
+		default: \
+		fprintf(stderr, "Unimplemented opcode %d.\n", OP(bytecode)); \
+		return INTERPRET_RUNTIME_ERROR;
+#endif
 #define READ_BYTECODE() (*frame->ip++)
 #define BINARY_OPVV(valueType, op) \
 	do { \
@@ -304,6 +322,12 @@ static void defineMethod(VM *vm, Value ra, Value rb, Value rc) {
 	} while(false)
 #define READ_STRING() AS_STRING(frame->c->f->chunk.constants->values[RD(bytecode)])
 static InterpretResult run(VM *vm) {
+#ifdef COMPUTED_GOTO
+	#define BUILD_GOTOS(op, _) &&TARGET_##op
+	static void* opcodes[] = {
+		OPCODE_BUILDER(BUILD_GOTOS, COMMA)
+	};
+#endif /* COMPUTED_GOTO */
 	CallFrame *frame = &vm->frames[vm->frameCount - 1];
 	while(true) {
 #ifdef DEBUG_STACK_USAGE
@@ -319,28 +343,29 @@ static InterpretResult run(VM *vm) {
 #ifdef DEBUG_STACK_USAGE
 		printf("\n");
 #endif /* DEBUG_STACK_USAGE */
-		uint32_t bytecode = READ_BYTECODE();
-		switch(OP(bytecode)) {
-			case OP_CONST_NUM:
+		uint32_t bytecode;
+		SWITCH
+		{
+			TARGET(OP_CONST_NUM):
 				frame->slots[RA(bytecode)] = frame->c->f->chunk.constants->values[RD(bytecode)];
-				break;
-			case OP_PRIMITIVE:
-				frame->slots[RA(bytecode)] = getPrimitive(RD(bytecode)); break;
-			case OP_NEGATE: {
+				DISPATCH;
+			TARGET(OP_PRIMITIVE):
+				frame->slots[RA(bytecode)] = getPrimitive(RD(bytecode)); DISPATCH;
+			TARGET(OP_NEGATE): {
 				Value vRD = frame->slots[RD(bytecode)];
 				if(!IS_NUMBER(vRD)) {
 					runtimeError(vm, "Operand must be a number.");
 					goto exception_unwind;
 				}
 				frame->slots[RA(bytecode)] = NUMBER_VAL(-AS_NUMBER(vRD));
-				break;
+				DISPATCH;
 			}
-			case OP_NOT: {
+			TARGET(OP_NOT): {
 				Value vRD = frame->slots[RD(bytecode)];
 				frame->slots[RA(bytecode)] = BOOL_VAL(isFalsey(vRD));
-				break;
+				DISPATCH;
 			}
-			case OP_GET_GLOBAL: {
+			TARGET(OP_GET_GLOBAL): {
 				ObjString *name = READ_STRING();
 				Value value;
 				if(!tableGet(vm->globals, name, &value)) {
@@ -348,38 +373,38 @@ static InterpretResult run(VM *vm) {
 					goto exception_unwind;
 				}
 				frame->slots[RA(bytecode)] = value;
-				break;
+				DISPATCH;
 			}
-			case OP_DEFINE_GLOBAL: {
+			TARGET(OP_DEFINE_GLOBAL): {
 				ObjString *name = READ_STRING();
 				tableSet(vm, vm->globals, name, frame->slots[RA(bytecode)]);
-				break;
+				DISPATCH;
 			}
-			case OP_SET_GLOBAL: {
+			TARGET(OP_SET_GLOBAL): {
 				ObjString *name = READ_STRING();
 				if(tableSet(vm, vm->globals, name, frame->slots[RA(bytecode)])) {
 					runtimeError(vm, "Undefined variable '%s'.", name->chars);
 					goto exception_unwind;
 				}
-				break;
+				DISPATCH;
 			}
-			case OP_EQUAL: {
+			TARGET(OP_EQUAL): {
 				Value b = frame->slots[RB(bytecode)];
 				Value c = frame->slots[RC(bytecode)];
 				frame->slots[RA(bytecode)] = BOOL_VAL(valuesEqual(b, c));
-				break;
+				DISPATCH;
 			}
-			case OP_NEQ: {
+			TARGET(OP_NEQ): {
 				Value b = frame->slots[RB(bytecode)];
 				Value c = frame->slots[RC(bytecode)];
 				frame->slots[RA(bytecode)] = BOOL_VAL(!valuesEqual(b, c));
-				break;
+				DISPATCH;
 			}
-			case OP_GREATER:  BINARY_OPVV(BOOL_VAL, >); break;
-			case OP_GEQ:      BINARY_OPVV(BOOL_VAL, >=); break;
-			case OP_LESS:     BINARY_OPVV(BOOL_VAL, <); break;
-			case OP_LEQ:      BINARY_OPVV(BOOL_VAL, <=); break;
-			case OP_ADDVV: {
+			TARGET(OP_GREATER):  BINARY_OPVV(BOOL_VAL, >); DISPATCH;
+			TARGET(OP_GEQ):      BINARY_OPVV(BOOL_VAL, >=); DISPATCH;
+			TARGET(OP_LESS):     BINARY_OPVV(BOOL_VAL, <); DISPATCH;
+			TARGET(OP_LEQ):      BINARY_OPVV(BOOL_VAL, <=); DISPATCH;
+			TARGET(OP_ADDVV): {
 				Value b = frame->slots[RB(bytecode)];
 				Value c = frame->slots[RC(bytecode)];
 				if(IS_STRING(b) && IS_STRING(c)) {
@@ -390,12 +415,12 @@ static InterpretResult run(VM *vm) {
 					runtimeError(vm, "Operands must be two numbers or two strings.");
 					goto exception_unwind;
 				}
-				break;
+				DISPATCH;
 			}
-			case OP_SUBVV:	  BINARY_OPVV(NUMBER_VAL, -); break;
-			case OP_MULVV:	  BINARY_OPVV(NUMBER_VAL, *); break;
-			case OP_DIVVV:	  BINARY_OPVV(NUMBER_VAL, /); break;
-			case OP_MODVV: {
+			TARGET(OP_SUBVV):	  BINARY_OPVV(NUMBER_VAL, -); DISPATCH;
+			TARGET(OP_MULVV):	  BINARY_OPVV(NUMBER_VAL, *); DISPATCH;
+			TARGET(OP_DIVVV):	  BINARY_OPVV(NUMBER_VAL, /); DISPATCH;
+			TARGET(OP_MODVV): {
 				Value b = frame->slots[RB(bytecode)];
 				Value c = frame->slots[RC(bytecode)];
 				if(!IS_NUMBER(b) || !IS_NUMBER(c)) {
@@ -403,9 +428,9 @@ static InterpretResult run(VM *vm) {
 					goto exception_unwind;
 				}
 				frame->slots[RA(bytecode)] = NUMBER_VAL(fmod(AS_NUMBER(b), AS_NUMBER(c)));
-				break;
+				DISPATCH;
 			}
-			case OP_RETURN: {
+			TARGET(OP_RETURN): {
 				if(vm->frameCount == 1)
 					return INTERPRET_OK;
 
@@ -417,52 +442,52 @@ static InterpretResult run(VM *vm) {
 					frame->slots[-1 + i] = frame->slots[ra + i];
 				}
 				frame = decFrame(vm);
-				break;
+				DISPATCH;
 			}
-			case OP_JUMP:
+			TARGET(OP_JUMP):
 OP_JUMP:
 				assert(RJump(bytecode) != -1);
 				frame->ip += RJump(bytecode);
-				break;
-			case OP_COPY_JUMP_IF_FALSE:
+				DISPATCH;
+			TARGET(OP_COPY_JUMP_IF_FALSE):
 				frame->slots[RA(bytecode)] = frame->slots[RD(bytecode)];
 				// intentional fallthrough
-			case OP_JUMP_IF_FALSE:
+			TARGET(OP_JUMP_IF_FALSE):
 				if(isFalsey(frame->slots[RD(bytecode)])) {
 					bytecode = READ_BYTECODE();
 					assert(OP(bytecode) == OP_JUMP);
 					goto OP_JUMP;
 				}
 				frame->ip++;
-				break;
-			case OP_COPY_JUMP_IF_TRUE:
+				DISPATCH;
+			TARGET(OP_COPY_JUMP_IF_TRUE):
 				frame->slots[RA(bytecode)] = frame->slots[RD(bytecode)];
 				// intentional fallthrough
-			case OP_JUMP_IF_TRUE:
+			TARGET(OP_JUMP_IF_TRUE):
 				if(!isFalsey(frame->slots[RD(bytecode)])) {
 					bytecode = READ_BYTECODE();
 					assert(OP(bytecode) == OP_JUMP);
 					goto OP_JUMP;
 				}
 				frame->ip++;
-				break;
-			case OP_MOV:
+				DISPATCH;
+			TARGET(OP_MOV):
 				frame->slots[RA(bytecode)] = frame->slots[(int16_t)RD(bytecode)];
-				break;
-			case OP_CALL:	// RA = func/dest reg; RB = retCount; RC = argCount
+				DISPATCH;
+			TARGET(OP_CALL):	// RA = func/dest reg; RB = retCount; RC = argCount
 				if(!callValue(vm, &frame->slots[RA(bytecode)], RB(bytecode), RC(bytecode)))
 					goto exception_unwind;
 				frame = &vm->frames[vm->frameCount-1];
-				break;
-			case OP_GET_UPVAL: {
+				DISPATCH;
+			TARGET(OP_GET_UPVAL): {
 				frame->slots[RA(bytecode)] = *frame->c->upvalues[RD(bytecode)]->location;
-				break;
+				DISPATCH;
 			}
-			case OP_SET_UPVAL: {
+			TARGET(OP_SET_UPVAL): {
 				*frame->c->upvalues[RD(bytecode)]->location = frame->slots[RA(bytecode)];
-				break;
+				DISPATCH;
 			}
-			case OP_CLOSURE: {
+			TARGET(OP_CLOSURE): {
 				ObjFunction *f = AS_FUNCTION(frame->c->f->chunk.constants->values[RD(bytecode)]);
 				ObjClosure *cl = newClosure(vm, f);
 				frame->slots[RA(bytecode)] = OBJ_VAL(cl);	// Can be found by GC
@@ -472,26 +497,26 @@ OP_JUMP:
 					else
 						cl->upvalues[i] = frame->c->upvalues[(f->uv[i] & 0xff)-1];
 				}
-				break;
+				DISPATCH;
 			}
-			case OP_CLOSE_UPVALUES:
+			TARGET(OP_CLOSE_UPVALUES):
 				closeUpvalues(vm, frame->slots + RA(bytecode));
-				break;
-			case OP_CLASS: {
+				DISPATCH;
+			TARGET(OP_CLASS): {
 				ObjClass *klass = newClass(vm, AS_STRING(frame->c->f->chunk.constants->values[RD(bytecode)]));
 				frame->slots[RA(bytecode)] = OBJ_VAL(klass);
-				break;
+				DISPATCH;
 			}
-			case OP_GET_PROPERTY: {	// RA = dest reg; RB = object reg; RC = property reg
+			TARGET(OP_GET_PROPERTY): {	// RA = dest reg; RB = object reg; RC = property reg
 				int16_t rb = ((int16_t)(Reg)(RB(bytecode) + 1))-1;
 				Value v = frame->slots[rb];
 				if(IS_INSTANCE(v)) {
 					ObjInstance *instance = AS_INSTANCE(v);
 					ObjString *name = AS_STRING(frame->slots[RC(bytecode)]);
 					if(tableGet(instance->fields, name, &frame->slots[RA(bytecode)])) {
-						break;
+						DISPATCH;
 					} else if(bindMethod(vm, instance, instance->klass, name, &frame->slots[RA(bytecode)])) {
-						break;
+						DISPATCH;
 					}
 					goto exception_unwind;
 				} else if(IS_ARRAY(v)) {
@@ -499,14 +524,14 @@ OP_JUMP:
 					ObjString *name = AS_STRING(frame->slots[RC(bytecode)]);
 					// Arrays have methods, but no fields.
 					if(bindMethod(vm, instance, instance->klass, name, &frame->slots[RA(bytecode)]))
-						break;
+						DISPATCH;
 					goto exception_unwind;
 				} else {
 					runtimeError(vm, "Only instances have properties.");
 					goto exception_unwind;
 				}
 			}
-			case OP_SET_PROPERTY: {
+			TARGET(OP_SET_PROPERTY): {
 				int16_t rb = ((int16_t)(Reg)(RB(bytecode) + 1))-1;
 				Value v = frame->slots[rb];
 				if(!HAS_PROPERTIES(v)) {
@@ -516,20 +541,20 @@ OP_JUMP:
 				ObjInstance *instance = AS_INSTANCE(v);
 				assert(IS_STRING(frame->slots[RC(bytecode)]));
 				tableSet(vm, instance->fields, AS_STRING(frame->slots[RC(bytecode)]), frame->slots[RA(bytecode)]);
-				break;
+				DISPATCH;
 			}
-			case OP_METHOD:
+			TARGET(OP_METHOD):
 				defineMethod(vm, frame->slots[RA(bytecode)], frame->slots[RB(bytecode)], frame->slots[RC(bytecode)]);
-				break;
+				DISPATCH;
 			/*
-			case OP_INVOKE: {
+			TARGET(OP_INVOKE): {
 				ObjString *name = AS_STRING(frame->slots[RN(bytecode)]);
 				if(invokeMethod(vm, &frame->slots[RM(bytecode)], name, RO(bytecode), RP(bytecode)))
-					break;
+					DISPATCH;
 				goto exception_unwind;
 			}
 			*/
-			case OP_INHERIT: {
+			TARGET(OP_INHERIT): {
 				Value superclass = frame->slots[RD(bytecode)];
 				if(!IS_CLASS(superclass)) {
 					runtimeError(vm, "Superclass must be a class.");
@@ -539,34 +564,34 @@ OP_JUMP:
 				assert(subclass->methods);
 				assert(AS_CLASS(superclass)->methods);
 				tableAddAll(vm, AS_CLASS(superclass)->methods, subclass->methods);
-				break;
+				DISPATCH;
 			}
-			case OP_GET_SUPER: {
+			TARGET(OP_GET_SUPER): {
 				int16_t rb = ((int16_t)(Reg)(RB(bytecode) + 1))-1;
 				ObjClass *superclass = AS_CLASS(frame->slots[RA(bytecode)]);
 				ObjInstance *instance = AS_INSTANCE(frame->slots[rb]);
 				ObjString *name = AS_STRING(frame->slots[RC(bytecode)]);
 				if(!bindMethod(vm, instance, superclass, name, &frame->slots[RA(bytecode)]))
 					goto exception_unwind;
-				break;
+				DISPATCH;
 			}
-			case OP_NEW_ARRAY:
+			TARGET(OP_NEW_ARRAY):
 				frame->slots[RA(bytecode)] = OBJ_VAL(newArray(vm, RD(bytecode)));
-				break;
-			case OP_DUPLICATE_ARRAY: {
+				DISPATCH;
+			TARGET(OP_DUPLICATE_ARRAY): {
 				ObjArray *t = duplicateArray(vm, AS_ARRAY(frame->c->f->chunk.constants->values[RD(bytecode)]));
 				frame->slots[RA(bytecode)] = OBJ_VAL(t);
-				break;
+				DISPATCH;
 			}
-			case OP_NEW_TABLE:
+			TARGET(OP_NEW_TABLE):
 				frame->slots[RA(bytecode)] = OBJ_VAL(newTable(vm, RD(bytecode)));
-				break;
-			case OP_DUPLICATE_TABLE: {
+				DISPATCH;
+			TARGET(OP_DUPLICATE_TABLE): {
 				ObjTable *t = duplicateTable(vm, AS_TABLE(frame->c->f->chunk.constants->values[RD(bytecode)]));
 				frame->slots[RA(bytecode)] = OBJ_VAL(t);
-				break;
+				DISPATCH;
 			}
-			case OP_GET_SUBSCRIPT: {
+			TARGET(OP_GET_SUBSCRIPT): {
 				Value v = frame->slots[RB(bytecode)];
 				if(IS_ARRAY(v)) {
 					ObjArray *a = AS_ARRAY(v);
@@ -599,9 +624,9 @@ OP_JUMP:
 					runtimeError(vm, "Only arrays and tables can be subscripted.");
 					goto exception_unwind;
 				}
-				break;
+				DISPATCH;
 			}
-			case OP_SET_SUBSCRIPT: {
+			TARGET(OP_SET_SUBSCRIPT): {
 				Value v = frame->slots[RB(bytecode)];
 				if(IS_ARRAY(v)) {
 					ObjArray *a = AS_ARRAY(v);
@@ -628,30 +653,28 @@ OP_JUMP:
 					runtimeError(vm, "Only arrays can be subscripted.");
 					goto exception_unwind;
 				}
-				break;
+				DISPATCH;
 			}
-			case OP_BEGIN_TRY:
+			TARGET(OP_BEGIN_TRY):
 				vm->_try[vm->tryCount].ip = (frame->ip + RJump(bytecode)) - frame->c->f->chunk.code;
 				vm->_try[vm->tryCount].exception = RA(bytecode);
 				vm->_try[vm->tryCount].frame = frame - vm->frames;
 				vm->tryCount++;
-				break;
-			case OP_END_TRY:
+				DISPATCH;
+			TARGET(OP_END_TRY):
 				frame->ip += RJump(bytecode);
 				assert(vm->tryCount > 0);
 				vm->tryCount--;
-				break;
-			case OP_JUMP_IF_NOT_EXC: {
+				DISPATCH;
+			TARGET(OP_JUMP_IF_NOT_EXC): {
 				Value v = frame->slots[RA(bytecode)];
 				Value exception = vm->exception;
 				if(IS_CLASS(v) && IS_EXCEPTION(exception) && AS_EXCEPTION(exception)->klass == AS_CLASS(v))
 					frame->ip += RJump(bytecode);
-				break;
+				DISPATCH;
 			}
-			default:
-				fprintf(stderr, "Unimplemented opcode %d.\n", OP(bytecode));
-				return INTERPRET_RUNTIME_ERROR;
-			case OP_THROW: {
+			DEFAULT
+			TARGET(OP_THROW): {
 				Value err = frame->slots[RA(bytecode)];
 				if(IS_OBJ(err) && (IS_EXCEPTION(err) || (IS_INSTANCE(err) && AS_INSTANCE(err)->klass->isException))) {
 					vm->exception = err;
@@ -666,7 +689,7 @@ exception_unwind: {
 					frame = &vm->frames[vm->frameCount - 1];
 					frame->ip = frame->c->f->chunk.code + vm->_try[vm->tryCount].ip;
 					frame->slots[vm->_try[vm->tryCount].exception] = vm->exception;
-					break;
+					DISPATCH;
 				} else {
 					ObjException *err = AS_EXCEPTION(vm->exception);
 					fprintValue(stderr, err->msg);
@@ -691,6 +714,9 @@ exception_unwind: {
 }
 #undef BINARY_OPVV
 #undef READ_BYTECODE
+#undef TARGET
+#undef DISPATCH
+#undef SWITCH
 
 InterpretResult interpret(VM *vm, const char *source, bool printCode) {
 	incFrame(vm, 2, &vm->stack[1], NULL);

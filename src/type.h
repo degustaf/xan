@@ -74,8 +74,6 @@ typedef struct sObjTable ObjTable;
 	ObjTable *fields
 
 typedef struct sObjString ObjString;
-#define KEY(e) AS_STRING(e[0])
-#define VALUE(e) e[1]
 
 typedef struct {
 	INSTANCE_FIELDS;

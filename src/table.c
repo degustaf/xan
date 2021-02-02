@@ -21,6 +21,9 @@ struct sObjTable {
 	Value *entries;
 };
 
+#define KEY(e) AS_STRING(e[0])
+#define VALUE(e) e[1]
+
 bool TableInit (VM *vm, int argCount, Value *args) {
 	assert((argCount & 1) == 0);
 
@@ -80,7 +83,7 @@ static void adjustCapacity(VM *vm, ObjTable *t, ssize_t capacityMask) {
 	t->count = 0;
 	for(ssize_t i=0; i<=t->capacityMask; i+=2) {
 		Value *e = &t->entries[i];
-		if(IS_NIL(*e ))
+		if(IS_NIL(*e))
 			continue;
 		Value *dest = findEntry(entries, capacityMask, KEY(e));
 		*dest = OBJ_VAL(KEY(e));

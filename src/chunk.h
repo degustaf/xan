@@ -5,21 +5,62 @@
 
 #include "object.h"
 
+#define COMMA ,
+#define OPCODE_BUILDER(X, sep) \
+	X(OP_CONST_NUM,			ADConst)sep		/*  0 */ \
+	X(OP_PRIMITIVE, 		ADprim)sep \
+	X(OP_NEGATE,			AD)sep \
+	X(OP_NOT,				AD)sep \
+	X(OP_DEFINE_GLOBAL,		ADstr)sep \
+	X(OP_SET_GLOBAL,		ADstr)sep		/*  5 */ \
+	X(OP_GET_GLOBAL,		ADstr)sep \
+	X(OP_RETURN,			ADret)sep \
+	X(OP_EQUAL,				ABC)sep \
+	X(OP_NEQ,				ABC)sep \
+	X(OP_GREATER,			ABC)sep			/* 10 */ \
+	X(OP_LEQ,				ABC)sep \
+	X(OP_GEQ,				ABC)sep \
+	X(OP_LESS,				ABC)sep \
+	X(OP_ADDVV,				ABC)sep \
+	X(OP_SUBVV,				ABC)sep			/* 15 */ \
+	X(OP_MULVV,				ABC)sep \
+	X(OP_DIVVV,				ABC)sep \
+	X(OP_MODVV,				ABC)sep \
+	X(OP_JUMP,				J)sep \
+	X(OP_COPY_JUMP_IF_FALSE,AD)sep			/* 20 */ \
+	X(OP_COPY_JUMP_IF_TRUE, AD)sep \
+	X(OP_JUMP_IF_FALSE,		D)sep \
+	X(OP_JUMP_IF_TRUE, 		D)sep \
+	X(OP_MOV,				AD)sep \
+	X(OP_CALL,				ABCcall)sep		/* 25 */ \
+	X(OP_GET_UPVAL,			AD)sep \
+	X(OP_SET_UPVAL,			AD)sep \
+	X(OP_CLOSURE,			AD)sep \
+	X(OP_CLOSE_UPVALUES,	A)sep \
+	X(OP_CLASS,				ADConst)sep		/* 30 */ \
+	X(OP_GET_PROPERTY,		ABC)sep \
+	X(OP_SET_PROPERTY,		ABC)sep \
+	X(OP_METHOD,			ABC)sep \
+	X(OP_INHERIT,			AD)sep \
+	X(OP_GET_SUPER,			ABC)sep			/* 35 */ \
+	X(OP_NEW_ARRAY,			AD)sep \
+	X(OP_DUPLICATE_ARRAY,	AD)sep \
+	X(OP_NEW_TABLE,			AD)sep \
+	X(OP_DUPLICATE_TABLE,	AD)sep \
+	X(OP_GET_SUBSCRIPT,		ABC)sep			/* 40 */ \
+	X(OP_SET_SUBSCRIPT,		ABC)sep \
+	X(OP_BEGIN_TRY,			AJ)sep \
+	X(OP_END_TRY,			J)sep \
+	X(OP_THROW,				A)sep \
+	X(OP_JUMP_IF_NOT_EXC,	AJ)sep			/* 45 */
+#define BUILD_OPCODES(op, _) op
+
 typedef enum {
-	OP_CONST_NUM,			// Registers: A,D		// 0
-	OP_PRIMITIVE,			// Registers: A,D
-	OP_NEGATE,				// Registers: A,D
-	OP_NOT,					// Registers: A,D
-	OP_DEFINE_GLOBAL,		// Registers: A,D
-	OP_SET_GLOBAL,			// Registers: A,D		// 5
-	OP_GET_GLOBAL,			// Registers: A,D
-	OP_RETURN,				// Registers: A
-	OP_EQUAL,				// Registers: A,B,C
-	OP_NEQ,					// Registers: A,B,C
-	OP_GREATER,				// Registers: A,B,C		// 10
-	OP_LEQ,					// Registers: A,B,C
-	OP_GEQ,					// Registers: A,B,C
-	OP_LESS,				// Registers: A,B,C
+	OPCODE_BUILDER(BUILD_OPCODES, COMMA)
+
+	OP_COUNT,
+	OP_OR = OP_COPY_JUMP_IF_FALSE,	// For parsing
+	OP_AND = OP_COPY_JUMP_IF_TRUE,	// For parsing
 	// OP_ADDVK,
 	// OP_SUBVK,
 	// OP_MULVK,
@@ -28,41 +69,7 @@ typedef enum {
 	// OP_SUBKV,
 	// OP_MULKV,
 	// OP_DIVKV,
-	OP_ADDVV,				// Registers: A,B,C
-	OP_SUBVV,				// Registers: A,B,C		// 15
-	OP_MULVV,				// Registers: A,B,C
-	OP_DIVVV,				// Registers: A,B,C
-	OP_MODVV,				// Registers: A,B,C
-	OP_JUMP,				// Registers: D
-	OP_COPY_JUMP_IF_FALSE,	// Registers: A,D		// 20
-	OP_OR = OP_COPY_JUMP_IF_FALSE,	// For parsing
-	OP_COPY_JUMP_IF_TRUE,	// Registers: A,D
-	OP_AND = OP_COPY_JUMP_IF_TRUE,	// For parsing
-	OP_JUMP_IF_FALSE,		// Registers: D			// 22
-	OP_JUMP_IF_TRUE,		// Registers: D
-	OP_MOV,					// Registers: A,D
-	OP_CALL,				// Registers: A,B,C		// 25
-	OP_GET_UPVAL,			// Registers: A,D
-	OP_SET_UPVAL,			// Registers: A,D
-	OP_CLOSURE,				// Registers: A,D
-	OP_CLOSE_UPVALUES,		// Registers: A
-	OP_CLASS,				// Registers: A,D		// 30
-	OP_GET_PROPERTY,		// Registers: A,B,C
-	OP_SET_PROPERTY,		// Registers: A,B,C
-	OP_METHOD,				// Registers: A,B,C
-	// OP_INVOKE,			// Registers: M,N,O,P
-	OP_INHERIT,				// Registers: A,D
-	OP_GET_SUPER,			// Registers: A,B,C		// 35
-	OP_NEW_ARRAY,			// Registers: A,D
-	OP_DUPLICATE_ARRAY,		// Registers: A,D
-	OP_NEW_TABLE,			// Registers: A,D
-	OP_DUPLICATE_TABLE,		// Registers: A,D
-	OP_GET_SUBSCRIPT,		// Registers: A,B,C		// 40
-	OP_SET_SUBSCRIPT,		// Registers: A,B,C
-	OP_BEGIN_TRY,			// Registers: D
-	OP_END_TRY,				// Registers: D
-	OP_THROW,				// Registers: A
-	OP_JUMP_IF_NOT_EXC,		// Registers: A,D ???	// 45
+	// OP_INVOKE,			// Registers: M,N,O,P?
 } ByteCode;
 
 #define COMMA ,

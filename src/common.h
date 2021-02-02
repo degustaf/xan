@@ -4,6 +4,14 @@
 #include "xan.h"
 #include "arch.h"
 
+#if defined(__GNUC__) || defined(__clang__)
+	#define COMPUTED_GOTO
+#elif defined(_MSC_VER)
+	#undef  COMPUTED_GOTO
+#endif
+// This isn't ready yet
+// #undef  COMPUTED_GOTO
+
 #undef DEBUG_PARSER
 #undef DEBUG_EXPRESSION_DESCRIPTION
 #undef DEBUG_JUMP_LISTS

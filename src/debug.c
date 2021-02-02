@@ -4,13 +4,32 @@
 
 #include "object.h"
 
-/*
-static void simpleInstruction(const char *name) {
-	printf("%s\n", name);
+static void InstructionA(const char *name, __attribute__((unused)) Chunk *chunk, uint32_t bytecode) {
+	uint8_t reg = RA(bytecode);
+	printf("%-16s register %d\n", name, reg);
 }
-*/
 
-static void constantInstruction(const char *name, Chunk *chunk, uint32_t bytecode) {
+static void InstructionABC(const char *name, __attribute__((unused)) Chunk *chunk, uint32_t bytecode) {
+	uint8_t regA = RA(bytecode);
+	uint8_t regB = RB(bytecode);
+	uint8_t regC = RC(bytecode);
+	printf("%-16s Reg %4d Reg %4d -> Reg %4d\n", name, regB, regC, regA);
+}
+
+static void InstructionABCcall(const char *name, __attribute__((unused)) Chunk *chunk, uint32_t bytecode) {
+	uint8_t regA = RA(bytecode);
+	uint8_t regB = RB(bytecode);
+	uint8_t regC = RC(bytecode);
+	printf("%-16s call Reg %4d with arg count %4d returning %4d\n", name, regA, regC, regB);
+}
+
+static void InstructionAD(const char *name, __attribute__((unused)) Chunk *chunk, uint32_t bytecode) {
+	uint8_t reg = RA(bytecode);
+	uint16_t constant = RD(bytecode);
+	printf("%-16s register %4d to register %d\n", name, constant, reg);
+}
+
+static void InstructionADConst(const char *name, Chunk *chunk, uint32_t bytecode) {
 	uint8_t reg = RA(bytecode);
 	uint16_t constant = RD(bytecode);
 	printf("%-16s %4d '", name, constant);
@@ -21,23 +40,12 @@ static void constantInstruction(const char *name, Chunk *chunk, uint32_t bytecod
 	printf("' to register %d\n", reg);
 }
 
-static void primitiveInstruction(uint32_t bytecode) {
+static void InstructionADprim(__attribute__((unused)) const char *name, __attribute__((unused))Chunk *chunk, uint32_t bytecode) {
 	uint8_t reg = RA(bytecode);
 	Value p = getPrimitive(RD(bytecode));
 	printf("%-16s '", "OP_PRIMITIVE");
 	printValue(p);
 	printf("' to register %d\n", reg);
-}
-
-static void InstructionA(const char *name, uint32_t bytecode) {
-	uint8_t reg = RA(bytecode);
-	printf("%-16s register %d\n", name, reg);
-}
-
-static void InstructionAD(const char *name, uint32_t bytecode) {
-	uint8_t reg = RA(bytecode);
-	uint16_t constant = RD(bytecode);
-	printf("%-16s register %4d to register %d\n", name, constant, reg);
 }
 
 static void InstructionADstr(const char *name, Chunk *chunk, uint32_t bytecode) {
@@ -51,40 +59,26 @@ static void InstructionADstr(const char *name, Chunk *chunk, uint32_t bytecode) 
 	printf("' to register %d\n", reg);
 }
 
-static void InstructionABC(const char *name, uint32_t bytecode) {
-	uint8_t regA = RA(bytecode);
-	uint8_t regB = RB(bytecode);
-	uint8_t regC = RC(bytecode);
-	printf("%-16s Reg %4d Reg %4d -> Reg %4d\n", name, regB, regC, regA);
+static void InstructionADret(const char *name, __attribute__((unused)) Chunk *chunk, uint32_t bytecode) {
+	uint8_t reg = RA(bytecode);
+	uint16_t count = RD(bytecode);
+	printf("%-16s return %4d - 1 registers starting at %d\n", name, count, reg);
 }
 
-static void InstructionD(const char *name, uint32_t bytecode) {
+static void InstructionD(const char *name, __attribute__((unused)) Chunk *chunk, uint32_t bytecode) {
 	uint16_t constant = RD(bytecode);
 	printf("%-16s register %4d\n", name, constant);
 }
 
-static void InstructionJ(const char *name, uint32_t bytecode) {
+static void InstructionJ(const char *name, __attribute__((unused)) Chunk *chunk, uint32_t bytecode) {
 	int16_t constant = RJump(bytecode);
 	printf("%-16s jump %4d\n", name, constant);
 }
 
-static void InstructionAJ(const char *name, uint32_t bytecode) {
+static void InstructionAJ(const char *name, __attribute__((unused)) Chunk *chunk, uint32_t bytecode) {
 	uint8_t reg = RA(bytecode);
 	int16_t constant = RJump(bytecode);
 	printf("%-16s register %4d jump %d\n", name, reg, constant);
-}
-
-static void callInstruction(const char *name, uint32_t bytecode) {
-	uint8_t regA = RA(bytecode);
-	uint8_t regB = RB(bytecode);
-	uint8_t regC = RC(bytecode);
-	printf("%-16s call Reg %4d with arg count %4d returning %4d\n", name, regA, regC, regB);
-}
-
-static void returnInstruction(const char *name, uint32_t bytecode) {
-	uint8_t reg = RA(bytecode);
-	uint16_t count = RD(bytecode);
-	printf("%-16s return %4d - 1 registers starting at %d\n", name, count, reg);
 }
 
 void disassembleInstruction(Chunk* chunk, size_t offset) {
@@ -96,140 +90,13 @@ void disassembleInstruction(Chunk* chunk, size_t offset) {
 	} else {
 		printf("%4zu ", chunk->lines[offset]);
 	}
+#define BUILD_DISASSEMBLY(op, type) \
+	case op: \
+		Instruction##type(#op, chunk, bytecode); \
+		break
 
 	switch(OP(bytecode)) {
-		case OP_CONST_NUM:
-			constantInstruction("OP_CONST_NUM", chunk, bytecode);
-			break;
-		case OP_PRIMITIVE:
-			primitiveInstruction(bytecode);
-			break;
-		case OP_NEGATE:
-			InstructionAD("OP_NEGATE", bytecode);
-			break;
-		case OP_NOT:
-			InstructionAD("OP_NOT", bytecode);
-			break;
-		case OP_DEFINE_GLOBAL:
-			InstructionADstr("OP_DEFINE_GLOBAL", chunk, bytecode);
-			break;
-		case OP_SET_GLOBAL:
-			InstructionADstr("OP_SET_GLOBAL", chunk, bytecode);
-			break;
-		case OP_GET_GLOBAL:
-			InstructionADstr("OP_GET_GLOBAL", chunk, bytecode);
-			break;
-		case OP_RETURN:
-			returnInstruction("OP_RETURN", bytecode);
-			return;
-		case OP_EQUAL:
-			InstructionABC("OP_EQUAL", bytecode);
-			break;
-		case OP_NEQ:
-			InstructionABC("OP_NEQ", bytecode);
-			break;
-		case OP_GREATER:
-			InstructionABC("OP_GREATER", bytecode);
-			break;
-		case OP_LEQ:
-			InstructionABC("OP_LEQ", bytecode);
-			break;
-		case OP_GEQ:
-			InstructionABC("OP_GEQ", bytecode);
-			break;
-		case OP_LESS:
-			InstructionABC("OP_LESS", bytecode);
-			break;
-		case OP_ADDVV:
-			InstructionABC("OP_ADDVV", bytecode);
-			break;
-		case OP_SUBVV:
-			InstructionABC("OP_SUBVV", bytecode);
-			break;
-		case OP_MULVV:
-			InstructionABC("OP_MULVV", bytecode);
-			break;
-		case OP_DIVVV:
-			InstructionABC("OP_DIVVV", bytecode);
-			break;
-		case OP_MODVV:
-			InstructionABC("OP_MODVV", bytecode);
-			break;
-		case OP_JUMP:
-			InstructionJ("OP_JUMP", bytecode);
-			return;
-		case OP_COPY_JUMP_IF_FALSE:
-			InstructionAD("OP_COPY_JUMP_IF_FALSE", bytecode);
-			return;
-		case OP_COPY_JUMP_IF_TRUE:
-			InstructionAD("OP_COPY_JUMP_IF_TRUE", bytecode);
-			return;
-		case OP_JUMP_IF_FALSE:
-			InstructionD("OP_JUMP_IF_FALSE", bytecode);
-			return;
-		case OP_JUMP_IF_TRUE:
-			InstructionD("OP_JUMP_IF_TRUE", bytecode);
-			return;
-		case OP_MOV:
-			InstructionAD("OP_MOV", bytecode);
-			return;
-		case OP_CALL:
-			callInstruction("OP_CALL", bytecode);
-			return;
-		case OP_GET_UPVAL:
-			InstructionAD("OP_GET_UPVAL", bytecode);
-			return;
-		case OP_SET_UPVAL:
-			InstructionAD("OP_SET_UPVAL", bytecode);
-			return;
-		case OP_CLOSURE:
-			InstructionAD("OP_CLOSURE", bytecode);
-			return;
-		case OP_CLOSE_UPVALUES:
-			InstructionA("OP_CLOSE_UPVALUES", bytecode);
-			break;
-		case OP_CLASS:
-			constantInstruction("OP_CLASS", chunk, bytecode);
-			break;
-		case OP_GET_PROPERTY:
-			InstructionABC("OP_GET_PROPERTY", bytecode);
-			break;
-		case OP_SET_PROPERTY:
-			InstructionABC("OP_SET_PROPERTY", bytecode);
-			break;
-		case OP_METHOD:
-			InstructionABC("OP_METHOD", bytecode);
-			break;
-		case OP_INHERIT:
-			InstructionAD("OP_INHERIT", bytecode);
-			break;
-		case OP_GET_SUPER:
-			InstructionABC("OP_GET_SUPER", bytecode);
-			break;
-		case OP_NEW_ARRAY:
-			InstructionAD("OP_NEW_ARRAY", bytecode);
-			break;
-		case OP_DUPLICATE_ARRAY:
-			InstructionAD("OP_DUPLICATE_ARRAY", bytecode);
-			break;
-		case OP_GET_SUBSCRIPT:
-			InstructionABC("OP_GET_SUBSCRIPT", bytecode);
-			break;
-		case OP_SET_SUBSCRIPT:
-			InstructionABC("OP_SET_SUBSCRIPT", bytecode);
-			break;
-		case OP_BEGIN_TRY:
-			InstructionAJ("OP_BEGIN_TRY", bytecode);
-			break;
-		case OP_END_TRY:
-			InstructionJ("OP_END_TRY", bytecode);
-			break;
-		case OP_THROW:
-			InstructionA("OP_THROW", bytecode);
-			break;
-		case OP_JUMP_IF_NOT_EXC:
-			InstructionAJ("OP_JUMP_IF_NOT_EXC", bytecode);
-			break;
+		OPCODE_BUILDER(BUILD_DISASSEMBLY, ;)
 		default:
 			printf("Unknown opcode %d\n", OP(bytecode));
 			return;

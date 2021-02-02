@@ -20,33 +20,8 @@ SYNTAX_ERROR_RE = re.compile(r'\[.*line (\d+)\] (Error.+)')
 STACK_TRACE_RE = re.compile(r'\[line (\d+)\]')
 NONTEST_RE = re.compile(r'// nontest')
 
-passed = 0
-failed = 0
-num_skipped = 0
-expectations = 0
 
-interpreter = None
-
-INTERPRETERS = {}
-C_SUITES = []
-
-
-class Interpreter:
-  def __init__(self, name, language, args, tests):
-    self.name = name
-    self.language = language
-    self.args = args
-    self.tests = tests
-
-
-def c_interpreter(name, tests):
-  path = 'build/' + name
-
-  INTERPRETERS[name] = Interpreter(name, 'c', [path], tests)
-  C_SUITES.append(name)
-
-
-c_interpreter('xan', {
+TESTS = {
    'test': 'pass',
 
    # Limits are no longer in place.
@@ -59,10 +34,10 @@ c_interpreter('xan', {
    'test/method/too_many_parameters.xan': 'skip',
 
    'test/regression/binary_trees.xan': 'skip',  #This is too slow if stressing the GC.
-})
+}
 
 class Test:
-  def __init__(self, path):
+  def __init__(self, path, interpreter, results):
     self.path = path
     self.output = []
     self.compile_errors = set()
@@ -70,11 +45,11 @@ class Test:
     self.runtime_error_message = None
     self.exit_code = 0
     self.failures = []
+    self.interpreter = interpreter
+    self.results = results
 
 
   def parse(self):
-    global num_skipped
-    global expectations
 
     # Get the path components.
     parts = self.path.split('/')
@@ -87,13 +62,13 @@ class Test:
       if subpath: subpath += '/'
       subpath += part
 
-      if subpath in interpreter.tests:
-        state = interpreter.tests[subpath]
+      if subpath in TESTS:
+        state = TESTS[subpath]
 
     if not state:
       print('Unknown test state for "{}".'.format(self.path))
     if state == 'skip':
-      num_skipped += 1
+      self.results.num_skipped += 1
       return False
     # TODO: State for tests that should be run but are expected to fail?
 
@@ -103,7 +78,7 @@ class Test:
         match = OUTPUT_EXPECT.search(line)
         if match:
           self.output.append((match.group(1), line_num))
-          expectations += 1
+          self.results.expectations += 1
 
         match = ERROR_EXPECT.search(line)
         if match:
@@ -111,7 +86,7 @@ class Test:
 
           # If we expect a compile error, it should exit with EX_DATAERR.
           self.exit_code = 65
-          expectations += 1
+          self.results.expectations += 1
 
         match = ERROR_LINE_EXPECT.search(line)
         if match:
@@ -120,14 +95,12 @@ class Test:
           # their panic mode recovery is a little different. To handle that,
           # the tests can indicate if an error line should only appear for a
           # certain interpreter.
-          language = match.group(2)
-          if not language or language == interpreter.language:
-            self.compile_errors.add("[{0}] {1}".format(
-                match.group(3), match.group(4)))
+          self.compile_errors.add("[{0}] {1}".format(
+              match.group(3), match.group(4)))
 
-            # If we expect a compile error, it should exit with EX_DATAERR.
-            self.exit_code = 65
-            expectations += 1
+          # If we expect a compile error, it should exit with EX_DATAERR.
+          self.exit_code = 65
+          self.results.expectations += 1
 
         match = RUNTIME_ERROR_EXPECT.search(line)
         if match:
@@ -135,7 +108,7 @@ class Test:
           self.runtime_error_message = match.group(1)
           # If we expect a runtime error, it should exit with EX_SOFTWARE.
           self.exit_code = 70
-          expectations += 1
+          self.results.expectations += 1
 
         match = NONTEST_RE.search(line)
         if match:
@@ -151,8 +124,7 @@ class Test:
 
   def run(self):
     # Invoke the interpreter and run the test.
-    args = interpreter.args[:]
-    args.append(self.path)
+    args = [self.interpreter, self.path]
     proc = Popen(args, stdin=PIPE, stdout=PIPE, stderr=PIPE)
 
     out, err = proc.communicate()
@@ -329,85 +301,66 @@ def print_line(line=None):
     print(line, end='')
     sys.stdout.flush()
 
+class Suite:
+  def __init__(self, interpreter):
+    self.passed = 0
+    self.failed = 0
+    self.num_skipped = 0
+    self.expectations = 0
+    self.interpreter = interpreter
 
-def run_script(path):
-  if "benchmark" in path: return
+  def run_script(self, path):
+    if "benchmark" in path: return
+    if "nano" in path: return
 
-  global passed
-  global failed
-  global num_skipped
+    if (splitext(path)[1] != '.xan'):
+      return
 
-  if (splitext(path)[1] != '.xan'):
-    return
+    # Make a nice short path relative to the working directory.
 
-  # Make a nice short path relative to the working directory.
+    # Normalize it to use "/" since, among other things, the interpreters expect
+    # the argument to use that.
+    path = relpath(path).replace("\\", "/")
 
-  # Normalize it to use "/" since, among other things, the interpreters expect
-  # the argument to use that.
-  path = relpath(path).replace("\\", "/")
+    # Update the status line.
+    print_line('Passed: ' + green(self.passed) +
+               ' Failed: ' + red(self.failed) +
+               ' Skipped: ' + yellow(self.num_skipped) +
+               gray(' (' + path + ')'))
 
-  # Update the status line.
-  print_line('Passed: ' + green(passed) +
-             ' Failed: ' + red(failed) +
-             ' Skipped: ' + yellow(num_skipped) +
-             gray(' (' + path + ')'))
+    # Read the test and parse out the expectations.
+    test = Test(path, self.interpreter, self)
 
-  # Read the test and parse out the expectations.
-  test = Test(path)
+    if not test.parse():
+      # It's a skipped or non-test file.
+      return
 
-  if not test.parse():
-    # It's a skipped or non-test file.
-    return
+    test.run()
 
-  test.run()
-
-  # Display the results.
-  if len(test.failures) == 0:
-    passed += 1
-  else:
-    failed += 1
-    print_line(red('FAIL') + ': ' + path)
-    print('')
-    for failure in test.failures:
-      print('      ' + pink(failure))
-    print('')
-
-
-def run_suite(name):
-  global interpreter
-  global passed
-  global failed
-  global num_skipped
-  global expectations
-
-  interpreter = INTERPRETERS[name]
-
-  passed = 0
-  failed = 0
-  num_skipped = 0
-  expectations = 0
-
-  walk(join(REPO_DIR, 'test'), run_script)
-  print_line()
-
-  if failed == 0:
-    print('All ' + green(passed) + ' tests passed (' + str(expectations) +
-          ' expectations).')
-  else:
-    print(green(passed) + ' tests passed. ' + red(failed) + ' tests failed.')
-
-  return failed == 0
+    # Display the results.
+    if len(test.failures) == 0:
+      self.passed += 1
+    else:
+      self.failed += 1
+      print_line(red('FAIL') + ': ' + path)
+      print('')
+      for failure in test.failures:
+        print('      ' + pink(failure))
+      print('')
 
 
-def run_suites(names):
-  any_failed = False
-  for name in names:
-    print('=== {} ==='.format(name))
-    if not run_suite(name):
-      any_failed = True
+  def run_suite(self):
+    walk(join(REPO_DIR, 'test'), self.run_script)
+    print_line()
 
-  if any_failed:
-    sys.exit(1)
+    if self.failed == 0:
+      print('All ' + green(self.passed) + ' tests passed (' + str(self.expectations) +
+            ' expectations).')
+    else:
+      print(green(self.passed) + ' tests passed. ' + red(self.failed) + ' tests failed.')
+  
+    return self.failed == 0
+
 
 
 def main(argv):
@@ -415,15 +368,7 @@ def main(argv):
     print('Usage: test.py <interpreter>')
     sys.exit(1)
 
-  if argv[1] == 'xan':
-    run_suites(C_SUITES)
-  elif argv[1] not in INTERPRETERS:
-    print('Unknown interpreter "{}"'.format(argv[1]))
-    sys.exit(1)
-
-  else:
-    if not run_suite(argv[1]):
-      sys.exit(1)
+  Suite(argv[1]).run_suite()
 
 
 if __name__ == '__main__':

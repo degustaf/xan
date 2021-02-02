@@ -54,12 +54,9 @@ def run_script(interpreter, n):
         runTest(interpreter, relpath(path).replace("\\", "/"), n)
     return f
 
-def main(interpreter="./xan", n=5):
-    n = int(n)
+def main(interpreter="./xan", n=2):
     print('{0: <40}{1: <20}{2: <20}'.format(n, 'mean', 'std.dev.'))
-    walk(join(dirname(dirname(realpath(__file__))), 'test/nano'), run_script(interpreter, n))
     walk(join(dirname(dirname(realpath(__file__))), 'test/benchmark'), run_script(interpreter, n))
-
 
 if __name__ == '__main__':
     main(*sys.argv[1:])

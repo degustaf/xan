@@ -2,6 +2,9 @@ build/
 libbuild/
 unittestBuild/
 
+profilebuild/
+libprofilebuild/
+
 # Prerequisites
 *.d
 
@@ -61,3 +64,5 @@ perf.data*
 gmon.*
 before.txt
 after.txt
+cachegrind.out*
+callgrind.out*
