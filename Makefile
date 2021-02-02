@@ -96,9 +96,11 @@ $(PATHLB)/%.o: $(PATHS)/%.c | $(PATHLB) $(PATHD)
 	$(COMPILE) -c $< -o $@
 	$(POSTCOMPILE)
 
+ifeq ($(CC), "gcc")
 $(PATHLB)/vm.o: $(PATHS)/vm.c | $(PATHLB) $(PATHD)
 	$(CC) $(CFLAGS) -fno-gcse -fno-crossjumping -MT $@ -MP -MMD -MF $(PATHD)/vm.Td -c $< -o $@
 	@mv -f $(PATHD)/vm.Td $(PATHD)/vm.d && touch $@
+endif
 
 $(PATHUB)/%.o: $(PATHU)/%.c | $(PATHUB) $(PATHD)
 	$(COMPILE) -c $< -o $@

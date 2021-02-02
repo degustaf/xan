@@ -28,4 +28,4 @@ addons:
         packages:
             - gcc-multilib
 
-script: make ARCH=${ARCH} test
+script: make CC=${CC} ARCH=${ARCH} test
