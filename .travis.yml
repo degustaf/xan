@@ -2,14 +2,14 @@ language: c
 os:
     - linux
     - osx
+    - windows
 dist: xenial
 compiler:
     - gcc
     - clang
 arch:
     - amd64
-    - ppc64le   # apt-get can't find multilib for this arch
-    - arm64     # apt-get can't find multilib for this arch
+    - ppc64le
     # - s390x     Build fails. Don't have hardware to debug on.
 env:
     - ARCH="-m64"
@@ -19,10 +19,13 @@ jobs:
     exclude:
         - os: osx
           arch: ppc64le
-        - os: osx
-          arch: s390x
-        - os: osx
-          arch: arm64
+        - os: windows
+          arch: ppc64le
+        - os: windows
+          compiler: gcc
+        - compiler: gcc
+          arch: ppc64le
+          env: ARCH="-m32"
     include:
         - os: windows
           compiler: mingw
@@ -30,14 +33,17 @@ jobs:
         - os: windows
           compiler: mingw
           env: ARCH="-m32"
-        - os: windows
+        - arch: arm64
+          os: linux
+          compiler: gcc
+          env:
+        - arch: arm64
+          os: linux
           compiler: clang
-          env: ARCH="-m64"
-        - os: windows
-          compiler: clang
-          env: ARCH="-m32"
+          env:
 
 install:
-    if [ $ARCH = -m32 ]; then sudo apt-get install gcc-multilib; fi
+    if [ $ARCH = -m32 ] && [ $arch = amd64 ] ; then sudo apt-get install gcc-multilib; fi
+    if [ $OS = windows ]; then choco install make; fi
 
 script: make CC=${CC} ARCH=${ARCH} test

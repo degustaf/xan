@@ -13,6 +13,14 @@
 #elif defined(__s390x__) || defined(__zarch__)
 	#define s390xARCH
 	#define ENDIAN	XAN_BIG_ENDIAN
+#elif defined(__PPC__)
+	#define ENDIAN XAN_LITTLE_ENDIAN
+#elif defined(__aarch64__)
+	#ifdef __BIG_ENDIAN
+		#define ENDIAN	XAN_BIG_ENDIAN
+	#else
+		#define ENDIAN XAN_LITTLE_ENDIAN
+	#endif
 #else
 	#error "Unsupported Architecture."
 #endif
