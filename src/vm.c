@@ -240,21 +240,21 @@ static bool invokeMethod(VM *vm, Value *slot, ObjString *name, Reg retCount, Reg
 	}
 	ObjInstance *instance = AS_INSTANCE(*slot);
 	assert(instance->klass->methods);
+	if((!IS_ARRAY(*slot)) && (tableGet(instance->fields, name, slot+1))) {
+		return callValue(vm, slot+1, retCount, argCount);
+	}
 	if(!tableGet(instance->klass->methods, name, &method)) {
 		runtimeError(vm, "Undefined property '%s'.", name->chars);
 		return false;
 	}
 	assert(isObjType(method, OBJ_CLOSURE) || isObjType(method, OBJ_NATIVE));
 
-	ObjBoundMethod *bound = newBoundMethod(vm, OBJ_VAL(instance), method);
-	*slot = (OBJ_VAL(bound));
-	*slot = bound->receiver;
-	// return call(vm, bound->method, slot, argCount, retCount);
-	if(bound->method->type == OBJ_CLOSURE)
-		return call(vm, (ObjClosure*)bound->method, slot, argCount, retCount);
-	assert(bound->method->type == OBJ_NATIVE);
-	NativeFn native = ((ObjNative*)bound->method)->function;
-	return native(vm, argCount, slot+1);
+	slot[1] = OBJ_VAL(instance);
+	if(AS_OBJ(method)->type == OBJ_CLOSURE)
+		return call(vm, AS_CLOSURE(method), slot + 1, argCount, retCount);
+	assert(AS_OBJ(method)->type == OBJ_NATIVE);
+	NativeFn native = AS_NATIVE(method);
+	return native(vm, argCount, slot+2);
 
 }
 
@@ -510,21 +510,14 @@ OP_JUMP:
 			TARGET(OP_GET_PROPERTY): {	// RA = dest reg; RB = object reg; RC = property reg
 				int16_t rb = ((int16_t)(Reg)(RB(bytecode) + 1))-1;
 				Value v = frame->slots[rb];
-				if(IS_INSTANCE(v)) {
+				if(HAS_PROPERTIES(v)) {
 					ObjInstance *instance = AS_INSTANCE(v);
 					ObjString *name = AS_STRING(frame->slots[RC(bytecode)]);
-					if(tableGet(instance->fields, name, &frame->slots[RA(bytecode)])) {
+					if((!IS_ARRAY(v)) && (tableGet(instance->fields, name, &frame->slots[RA(bytecode)]))) {
 						DISPATCH;
 					} else if(bindMethod(vm, instance, instance->klass, name, &frame->slots[RA(bytecode)])) {
 						DISPATCH;
 					}
-					goto exception_unwind;
-				} else if(IS_ARRAY(v)) {
-					ObjInstance *instance = AS_INSTANCE(v);
-					ObjString *name = AS_STRING(frame->slots[RC(bytecode)]);
-					// Arrays have methods, but no fields.
-					if(bindMethod(vm, instance, instance->klass, name, &frame->slots[RA(bytecode)]))
-						DISPATCH;
 					goto exception_unwind;
 				} else {
 					runtimeError(vm, "Only instances have properties.");
@@ -543,17 +536,17 @@ OP_JUMP:
 				tableSet(vm, instance->fields, AS_STRING(frame->slots[RC(bytecode)]), frame->slots[RA(bytecode)]);
 				DISPATCH;
 			}
+			TARGET(OP_INVOKE): {	// RA = object/dest reg; RA + 1 = property reg; RB = retCount; RC = argCount
+				int16_t ra = ((int16_t)(Reg)(RA(bytecode) + 1))-1;
+				ObjString *name = AS_STRING(frame->slots[ra+1]);
+				if(!invokeMethod(vm, &frame->slots[ra], name, RB(bytecode), RC(bytecode)))
+					goto exception_unwind;
+				frame = &vm->frames[vm->frameCount-1];
+				DISPATCH;
+			}
 			TARGET(OP_METHOD):
 				defineMethod(vm, frame->slots[RA(bytecode)], frame->slots[RB(bytecode)], frame->slots[RC(bytecode)]);
 				DISPATCH;
-			/*
-			TARGET(OP_INVOKE): {
-				ObjString *name = AS_STRING(frame->slots[RN(bytecode)]);
-				if(invokeMethod(vm, &frame->slots[RM(bytecode)], name, RO(bytecode), RP(bytecode)))
-					DISPATCH;
-				goto exception_unwind;
-			}
-			*/
 			TARGET(OP_INHERIT): {
 				Value superclass = frame->slots[RD(bytecode)];
 				if(!IS_CLASS(superclass)) {

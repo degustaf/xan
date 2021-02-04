@@ -52,7 +52,8 @@
 	X(OP_BEGIN_TRY,			AJ)sep \
 	X(OP_END_TRY,			J)sep \
 	X(OP_THROW,				A)sep \
-	X(OP_JUMP_IF_NOT_EXC,	AJ)sep			/* 45 */
+	X(OP_JUMP_IF_NOT_EXC,	AJ)sep			/* 45 */ \
+	X(OP_INVOKE,			ABCcall)sep
 #define BUILD_OPCODES(op, _) op
 
 typedef enum {

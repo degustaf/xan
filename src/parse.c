@@ -993,11 +993,12 @@ static Reg exprList(Parser *p, expressionDescription *e, Reg base) {
 	return n;
 }
 
-static Reg argumentList(Parser *p, expressionDescription *e) {
+static Reg argumentList(Parser *p, expressionDescription *e, ByteCode op) {
 	PRINT_FUNCTION;
 	expressionDescription args;
 	Reg nargs;
 	Reg base = e->u.s.info;
+	if(op == OP_INVOKE) base++;	// return reg is same as property name reg, which is at base + 1.
 	if(match(p, TOKEN_RIGHT_PAREN)) {
 		args.type = VOID_EXTYPE;
 		nargs = 0;
@@ -1013,10 +1014,10 @@ static Reg argumentList(Parser *p, expressionDescription *e) {
 			regReserve(p->currentCompiler, 1);
 		exprToReg(p, &args, base + nargs);
 	}
-	OP_position info = emit_ABC(p, OP_CALL, base, 1, nargs);
+	OP_position info = emit_ABC(p, op, (op == OP_INVOKE) ? base - 1 : base, 1, nargs);
 	exprInit(e, CALL_EXTYPE, info);
 	e->u.s.aux = base;
-	p->currentCompiler->nextReg = base+1;
+	p->currentCompiler->nextReg = base + 1;
 #ifdef DEBUG_PARSER
 	fprintf(stderr, "nextReg = %d\tbase = %d\n", p->currentCompiler->nextReg, base);
 #endif /* DEBUG_PARSER */
@@ -1027,7 +1028,7 @@ static void call(Parser *p, expressionDescription *e) {
 	PRINT_FUNCTION;
 	if(!p->hadError)
 		exprNextReg(p, e);
-	argumentList(p, e);
+	argumentList(p, e, OP_CALL);
 }
 
 static void number(Parser *p, expressionDescription *e) {
@@ -1199,7 +1200,14 @@ static void dot(Parser *p, expressionDescription *v) {
 	expressionDescription key;
 	exprAnyReg(p, v);
 	makeStringConstant(p, &key, p->previous.start, p->previous.length);
-	expressionIndexed(p, INDEXED_EXTYPE, v, &key);
+	if(match(p, TOKEN_LEFT_PAREN)) {
+		// expressionIndexed(p, INDEXED_EXTYPE, v, &key);
+		exprNextReg(p, v);
+		exprNextReg(p, &key);
+		argumentList(p, v, OP_INVOKE);
+	} else {
+		expressionIndexed(p, INDEXED_EXTYPE, v, &key);
+	}
 }
 
 static void subscript(Parser *p, expressionDescription *e) {
