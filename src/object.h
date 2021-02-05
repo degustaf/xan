@@ -8,9 +8,10 @@
 
 #include "type.h"
 
-#define IS_OBJ(value)     ((value).type == VAL_OBJ)
-#define AS_OBJ(value)     ((value).as.obj)
-#define OBJ_TYPE(value)        (AS_OBJ(value)->type)
+#define IS_OBJ(value)			((value).type == VAL_OBJ)
+#define AS_OBJ(value)			((value).as.obj)
+#define OBJ_TYPE(value)			(AS_OBJ(value)->type)
+#define SAME_VAL_TYPE(v1, v2)	((v1).type == (v2).type)
 
 static inline bool isObjType(Value v, ObjType t) {
 	return IS_OBJ(v) && AS_OBJ(v)->type == t;

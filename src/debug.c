@@ -148,9 +148,9 @@ void dumpStack(VM *vm, size_t count) {
 	dumpValueArray(vm->stack, vm->stackLast, count);
 	printf("frames = [");
 	for(size_t i = 0; i<vm->frameCount; i++)
-		printf("%ld, ", vm->frames[i].slots - vm->stack);
+		printf("%zu, ", vm->frames[i].slots - vm->stack);
 	printf("]\n");
-	printf("frame[%ld] = stack[%ld] = ", vm->frameCount - 1, vm->frames[vm->frameCount - 1].slots - vm->stack);
+	printf("frame[%zu] = stack[%zu] = ", vm->frameCount - 1, vm->frames[vm->frameCount - 1].slots - vm->stack);
 	dumpValueArray(vm->frames[vm->frameCount - 1].slots, vm->stackLast, count);
 }
 
@@ -166,7 +166,7 @@ void dumpOpenUpvalues(VM *vm) {
 
 void dumpClosedUpvalues(ObjClosure *c) {
 	if(c) {
-		printf("Closed upvalues(%ld) = {", c->uvCount);
+		printf("Closed upvalues(%zu) = {", c->uvCount);
 		fflush(stdout);
 		for(size_t i = 0; i<c->uvCount; i++) {
 			printObject(*c->upvalues[i]->location);

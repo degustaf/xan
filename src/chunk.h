@@ -130,6 +130,7 @@ static inline void setbc_d(uint32_t *p, uint16_t x) {
 #define setbc_c(p, x)	setbc(p, (x), 3)
 
 void initChunk(VM *vm, Chunk *chunk);
+void finalizeChunk(Chunk *chunk);
 size_t writeChunk(VM *vm, Chunk *chunk, uint32_t opcode, size_t line);
 size_t addConstant(VM *vm, Chunk *chunk, Value value);
 

@@ -186,7 +186,7 @@ static bool callValue(VM *vm, Value *callee, Reg retCount, Reg argCount) {
 				ObjClass *klass = AS_CLASS(*callee);
 				Value initializer;
 				assert(klass->methods);
-				if(tableGet(klass->methods, vm->initString, &initializer)) {
+				if(tableGet(klass->methods, OBJ_VAL(vm->initString), &initializer)) {
 					if(IS_NATIVE(initializer)) {
 						*callee = initializer;
 						goto native;
@@ -217,12 +217,13 @@ native:
 	return false;
 }
 
-static bool bindMethod(VM *vm, ObjInstance *instance, ObjClass *klass, ObjString *name, Value *slot) {
+static bool bindMethod(VM *vm, ObjInstance *instance, ObjClass *klass, Value name, Value *slot) {
 	Value method;
 	assert(instance);
 	assert(klass->methods);
 	if(!tableGet(klass->methods, name, &method)) {
-		runtimeError(vm, "Undefined property '%s'.", name->chars);
+		assert(IS_STRING(name));
+		runtimeError(vm, "Undefined property '%s'.", AS_STRING(name)->chars);
 		return false;
 	}
 	assert(isObjType(method, OBJ_CLOSURE) || isObjType(method, OBJ_NATIVE));
@@ -240,10 +241,10 @@ static bool invokeMethod(VM *vm, Value *slot, ObjString *name, Reg retCount, Reg
 	}
 	ObjInstance *instance = AS_INSTANCE(*slot);
 	assert(instance->klass->methods);
-	if((!IS_ARRAY(*slot)) && (tableGet(instance->fields, name, slot+1))) {
+	if((!IS_ARRAY(*slot)) && (tableGet(instance->fields, OBJ_VAL(name), slot+1))) {
 		return callValue(vm, slot+1, retCount, argCount);
 	}
-	if(!tableGet(instance->klass->methods, name, &method)) {
+	if(!tableGet(instance->klass->methods, OBJ_VAL(name), &method)) {
 		runtimeError(vm, "Undefined property '%s'.", name->chars);
 		return false;
 	}
@@ -288,7 +289,7 @@ static void defineMethod(VM *vm, Value ra, Value rb, Value rc) {
 	ObjClass *klass = AS_CLASS(ra);
 	ObjString *name = AS_STRING(rb);
 	assert(klass->methods);
-	tableSet(vm, klass->methods, name, rc);
+	tableSet(vm, klass->methods, OBJ_VAL(name), rc);
 }
 
 #ifdef COMPUTED_GOTO
@@ -368,7 +369,7 @@ static InterpretResult run(VM *vm) {
 			TARGET(OP_GET_GLOBAL): {
 				ObjString *name = READ_STRING();
 				Value value;
-				if(!tableGet(vm->globals, name, &value)) {
+				if(!tableGet(vm->globals, OBJ_VAL(name), &value)) {
 					runtimeError(vm, "Undefined variable '%s'.", name->chars);
 					goto exception_unwind;
 				}
@@ -377,12 +378,12 @@ static InterpretResult run(VM *vm) {
 			}
 			TARGET(OP_DEFINE_GLOBAL): {
 				ObjString *name = READ_STRING();
-				tableSet(vm, vm->globals, name, frame->slots[RA(bytecode)]);
+				tableSet(vm, vm->globals, OBJ_VAL(name), frame->slots[RA(bytecode)]);
 				DISPATCH;
 			}
 			TARGET(OP_SET_GLOBAL): {
 				ObjString *name = READ_STRING();
-				if(tableSet(vm, vm->globals, name, frame->slots[RA(bytecode)])) {
+				if(tableSet(vm, vm->globals, OBJ_VAL(name), frame->slots[RA(bytecode)])) {
 					runtimeError(vm, "Undefined variable '%s'.", name->chars);
 					goto exception_unwind;
 				}
@@ -512,7 +513,8 @@ OP_JUMP:
 				Value v = frame->slots[rb];
 				if(HAS_PROPERTIES(v)) {
 					ObjInstance *instance = AS_INSTANCE(v);
-					ObjString *name = AS_STRING(frame->slots[RC(bytecode)]);
+					Value name = frame->slots[RC(bytecode)];
+					assert(IS_STRING(name));
 					if((!IS_ARRAY(v)) && (tableGet(instance->fields, name, &frame->slots[RA(bytecode)]))) {
 						DISPATCH;
 					} else if(bindMethod(vm, instance, instance->klass, name, &frame->slots[RA(bytecode)])) {
@@ -533,7 +535,7 @@ OP_JUMP:
 				}
 				ObjInstance *instance = AS_INSTANCE(v);
 				assert(IS_STRING(frame->slots[RC(bytecode)]));
-				tableSet(vm, instance->fields, AS_STRING(frame->slots[RC(bytecode)]), frame->slots[RA(bytecode)]);
+				tableSet(vm, instance->fields, frame->slots[RC(bytecode)], frame->slots[RA(bytecode)]);
 				DISPATCH;
 			}
 			TARGET(OP_INVOKE): {	// RA = object/dest reg; RA + 1 = property reg; RB = retCount; RC = argCount
@@ -563,7 +565,7 @@ OP_JUMP:
 				int16_t rb = ((int16_t)(Reg)(RB(bytecode) + 1))-1;
 				ObjClass *superclass = AS_CLASS(frame->slots[RA(bytecode)]);
 				ObjInstance *instance = AS_INSTANCE(frame->slots[rb]);
-				ObjString *name = AS_STRING(frame->slots[RC(bytecode)]);
+				Value name = frame->slots[RC(bytecode)];
 				if(!bindMethod(vm, instance, superclass, name, &frame->slots[RA(bytecode)]))
 					goto exception_unwind;
 				DISPATCH;
@@ -605,11 +607,11 @@ OP_JUMP:
 				} else if(IS_TABLE(v)) {
 					ObjTable *t = AS_TABLE(v);
 					v = frame->slots[RC(bytecode)];
-					if(!IS_STRING(v)) {
-						runtimeError(vm, "Tables can only be subscripted by strings.");
+					if(!(IS_STRING(v) || IS_NUMBER(v))) {
+						runtimeError(vm, "Tables can only be subscripted by strings or numbers.");
 						goto exception_unwind;
 					}
-					if(!tableGet(t, AS_STRING(v), &frame->slots[RA(bytecode)])) {
+					if(!tableGet(t, v, &frame->slots[RA(bytecode)])) {
 						runtimeError(vm, "Subscript out of bounds.");
 						goto exception_unwind;
 					}
@@ -637,11 +639,11 @@ OP_JUMP:
 				} else if(IS_TABLE(v)) {
 					ObjTable *t = AS_TABLE(v);
 					v = frame->slots[RC(bytecode)];
-					if(!IS_STRING(v)) {
-						runtimeError(vm, "Tables can only be subscripted by strings.");
+					if(!(IS_STRING(v) || IS_NUMBER(v))) {
+						runtimeError(vm, "Tables can only be subscripted by strings or numbers.");
 						goto exception_unwind;
 					}
-					tableSet(vm, t, AS_STRING(v), frame->slots[RA(bytecode)]);
+					tableSet(vm, t, v, frame->slots[RA(bytecode)]);
 				} else {
 					runtimeError(vm, "Only arrays can be subscripted.");
 					goto exception_unwind;

@@ -366,6 +366,14 @@ static void exprDischarge(Parser *p, expressionDescription *e) {
 		default:
 			return;
 	}
+	// When this function returns, e->type is one of the following:
+	// PRIMITIVE
+	// STRING_EXTYPE
+	// NUMBER_EXTYPE
+	// RELOC_EXTYPE
+	// NONRELOC_EXTYPE
+	// JUMP_EXTYPE
+	// VOID_EXTYPE
 }
 
 static void regBump(Compiler *c, int n) {
@@ -390,7 +398,14 @@ static void regReserve(Compiler *c, int n) {
 #endif /* DEBUG_PARSER */
 }
 
-static uint16_t makeConstant(Parser *p, Value v);
+static uint16_t makeConstant(Parser *p, Value v) {
+	size_t constant = addConstant(p->vm, currentChunk(p->currentCompiler), v);
+	if(constant > UINT16_MAX) {
+		errorAtPrevious(p, "Too many constants in one chunk.");
+		return 0;
+	}
+	return (uint16_t)constant;
+}
 
 #define codePtr(chunk, e) (&((chunk)->code[(e)->u.s.info]))
 
@@ -835,6 +850,7 @@ static void initCompiler(Parser *p, Compiler *compiler, FunctionType type) {
 
 static ObjFunction *endCompiler(Parser *p) {
 	Chunk *c = currentChunk(p->currentCompiler);
+	finalizeChunk(&p->currentCompiler->chunk);
 	if((c->count == 0) || (p->currentCompiler->pendingJumpList != NO_JUMP) || (OP(c->code[c->count-1])) != OP_RETURN) {
 		expressionDescription e;
 		if(p->currentCompiler->type == TYPE_INITIALIZER) {
@@ -856,15 +872,6 @@ static ObjFunction *endCompiler(Parser *p) {
 	}
 	p->vm->currentCompiler = p->currentCompiler = p->currentCompiler->enclosing;
 	return f;
-}
-
-static uint16_t makeConstant(Parser *p, Value v) {
-	size_t constant = addConstant(p->vm, currentChunk(p->currentCompiler), v);
-	if(constant > UINT16_MAX) {
-		errorAtPrevious(p, "Too many constants in one chunk.");
-		return 0;
-	}
-	return (uint16_t)constant;
 }
 
 static bool identifiersEqual(Token *a, Token *b) {
@@ -1147,19 +1154,19 @@ static void table(Parser *p, expressionDescription *e) {
 				p->vm->frames[p->vm->frameCount-1].slots[1] = val.u.v;
 
 			if(ExprIsConstant(&key) && (key.type != NIL_EXTYPE) &&
-					(key.type == STRING_EXTYPE || ExprIsConstantHasNoJump(&val))) {
+					(key.type == STRING_EXTYPE || key.type == NUMBER_EXTYPE || ExprIsConstantHasNoJump(&val))) {
 				if(t == NULL) {
 					t = newTable(p->vm, count);
 					uint16_t constIdx = makeConstant(p, OBJ_VAL(t));
 					currentChunk(p->currentCompiler)->code[ins_location] =
 						OP_AD(OP_DUPLICATE_TABLE, nextReg - 1, constIdx);
 				}
-				assert(IS_STRING(key.u.v));
+				assert(IS_STRING(key.u.v) || IS_NUMBER(key.u.v));
 				if(ExprIsConstantHasNoJump(&val)) {
 					expr_toval(p, &val);
-					tableSet(p->vm, t, AS_STRING(key.u.v), val.u.v);
+					tableSet(p->vm, t, key.u.v, val.u.v);
 				} else {
-					tableSet(p->vm, t, AS_STRING(key.u.v), NIL_VAL);
+					tableSet(p->vm, t, key.u.v, NIL_VAL);
 					goto nonConstant;
 				}
 			} else {
@@ -1534,7 +1541,7 @@ static void beginScope(Compiler *current) {
 	current->scopeDepth++;
 }
 
-static ssize_t localIsCaptured(const Compiler *c) {
+static size_t localIsCaptured(const Compiler *c) {
 	bool closeUpvalues = false;
 	for(const Local *l = &c->locals[c->actVar]; (l >= c->locals) && (l->depth >= c->scopeDepth) ; l--)
 		closeUpvalues |= l->isCaptured;

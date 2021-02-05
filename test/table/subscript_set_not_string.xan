@@ -1,2 +1,0 @@
-var a = {"a": "b", "c": "d", "e": "f", "g": "h"};
-a[1] = 1;	// expect runtime error: Tables can only be subscripted by strings.

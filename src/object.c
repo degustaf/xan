@@ -62,7 +62,8 @@ ObjClass *newClass(VM *vm, ObjString *name) {
 void defineNative(VM *vm, ObjTable *t, CallFrame *frame, const NativeDef *f) {
 	frame->slots[0] = OBJ_VAL(copyString(f->name, strlen(f->name), vm));
 	frame->slots[1] = OBJ_VAL(newNative(vm, f->method));
-	tableSet(vm, t, AS_STRING(frame->slots[0]), frame->slots[1]);
+	assert(IS_STRING(frame->slots[0]));
+	tableSet(vm, t, frame->slots[0], frame->slots[1]);
 }
 
 void defineNativeClass(VM *vm, ObjTable *t, CallFrame *frame, ObjClass *klass) {
@@ -81,7 +82,7 @@ void defineNativeClass(VM *vm, ObjTable *t, CallFrame *frame, ObjClass *klass) {
 		defineNative(vm, klass->methods, frame2, &klass->methodsArray[i]);
 	decFrame(vm);
 
-	tableSet(vm, t, klass->name, OBJ_VAL(klass));
+	tableSet(vm, t, OBJ_VAL(klass->name), OBJ_VAL(klass));
 }
 
 ObjModule * newModule(VM *vm, ObjString *name) {
@@ -187,7 +188,7 @@ static ObjString* allocateString(char *chars, size_t length, uint32_t hash, VM *
 	string->chars = chars;
 	string->hash = hash;
 	fwdWriteBarrier(vm, OBJ_VAL(string));
-	tableSet(vm, vm->strings, string, NIL_VAL);
+	tableSet(vm, vm->strings, OBJ_VAL(string), NIL_VAL);
 
 	return string;
 }

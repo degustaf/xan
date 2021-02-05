@@ -17,12 +17,24 @@
 struct sObjTable {
 	INSTANCE_FIELDS;
 	size_t count;
-	ssize_t capacityMask;
+	size_t capacityMask;
 	Value *entries;
 };
 
-#define KEY(e) AS_STRING(e[0])
+#define KEY(e) e[0]
 #define VALUE(e) e[1]
+
+static uint32_t hash(Value v) {
+	assert(IS_STRING(v) || IS_NUMBER(v));
+	if(IS_STRING(v))
+		return AS_STRING(v)->hash;
+	assert(IS_NUMBER(v));
+	if((double)(int64_t)AS_NUMBER(v) == AS_NUMBER(v))
+		return (uint32_t)(int64_t)AS_NUMBER(v);
+	union {double x; uint64_t i;}temp;
+	temp.x = AS_NUMBER(v);
+	return (temp.i & 0xffffffff) ^ (temp.i >> 32);
+}
 
 bool TableInit (VM *vm, int argCount, Value *args) {
 	assert((argCount & 1) == 0);
@@ -32,14 +44,15 @@ bool TableInit (VM *vm, int argCount, Value *args) {
 
 	for(int i = 0; i<argCount; i+=2) {
 		assert(IS_STRING(args[i]));
-		tableSet(vm, t, AS_STRING(args[i]), args[i+1]);
+		tableSet(vm, t, args[i], args[i+1]);
 	}
 
 	return true;
 }
 
-static Value* findEntry(Value *entries, ssize_t capacityMask, ObjString *key) {
-	uint32_t index = key->hash & (capacityMask - 1);	// Even, i.e. key
+static Value* findEntry(Value *entries, size_t capacityMask, Value key) {
+	assert(IS_STRING(key) || IS_NUMBER(key));
+	uint32_t index = hash(key) & (capacityMask - 1);	// Even, i.e. key
 	Value *tombstone = NULL;
 
 	while(true) {
@@ -54,16 +67,18 @@ static Value* findEntry(Value *entries, ssize_t capacityMask, ObjString *key) {
 				if(tombstone == NULL)
 					tombstone = e;
 			}
-		} else if(KEY(e) == key) {
-			// We found the key.
-			return e;
+		} else if(SAME_VAL_TYPE(KEY(e), key)) {
+			if((IS_STRING(key) && (AS_STRING(KEY(e)) == AS_STRING(key))) ||
+					(IS_NUMBER(key) && (AS_NUMBER(KEY(e)) == AS_NUMBER(key))))
+				// We found the key.
+				return e;
 		}
 
 		index = (index+2) & capacityMask;
 	}
 }
 
-bool tableGet(ObjTable *t, ObjString *key, Value *value) {
+bool tableGet(ObjTable *t, Value key, Value *value) {
 	if(t->entries == NULL)
 		return false;
 
@@ -75,18 +90,18 @@ bool tableGet(ObjTable *t, ObjString *key, Value *value) {
 	return true;
 }
 
-static void adjustCapacity(VM *vm, ObjTable *t, ssize_t capacityMask) {
+static void adjustCapacity(VM *vm, ObjTable *t, size_t capacityMask) {
 	Value *entries = ALLOCATE(Value, capacityMask + 1);
-	for(ssize_t i=0; i<=capacityMask; i++)
+	for(size_t i=0; i<=capacityMask; i++)
 		entries[i] = NIL_VAL;
 
 	t->count = 0;
-	for(ssize_t i=0; i<=t->capacityMask; i+=2) {
-		Value *e = &t->entries[i];
+	for(size_t i=1; i<=t->capacityMask; i+=2) {
+		Value *e = &t->entries[i-1];
 		if(IS_NIL(*e))
 			continue;
 		Value *dest = findEntry(entries, capacityMask, KEY(e));
-		*dest = OBJ_VAL(KEY(e));
+		*dest = KEY(e);
 		VALUE(dest) = VALUE(e);
 		t->count++;
 	}
@@ -99,7 +114,7 @@ static void adjustCapacity(VM *vm, ObjTable *t, ssize_t capacityMask) {
 ObjTable *newTable(VM *vm, size_t count) {
 	ObjTable *t = ALLOCATE_OBJ(ObjTable, OBJ_TABLE);
 	t->count = 0;
-	t->capacityMask = -1;
+	t->capacityMask = 0;
 	t->entries = NULL;
 	t->klass = NULL;
 	t->fields = NULL;
@@ -112,9 +127,10 @@ ObjTable *newTable(VM *vm, size_t count) {
 	return t;
 }
 
-bool tableSet(VM *vm, ObjTable *t, ObjString *key, Value value) {
+bool tableSet(VM *vm, ObjTable *t, Value key, Value value) {
 	if(t->count + 1 > (t->capacityMask / 2) * TABLE_MAX_LOAD) {
-		ssize_t capacity = GROW_CAPACITY(t->capacityMask + 1);
+		size_t capacity = GROW_CAPACITY(t->capacityMask + 1);
+		assert(capacity >= 1);
 		adjustCapacity(vm, t, capacity-1);
 	}
 
@@ -124,12 +140,12 @@ bool tableSet(VM *vm, ObjTable *t, ObjString *key, Value value) {
 	if(isNewKey && IS_NIL(VALUE(e)))
 		t->count++;
 
-	*e = OBJ_VAL(key);
+	*e = key;
 	VALUE(e) = value;
 	return isNewKey;
 }
 
-bool tableDelete(ObjTable *t, ObjString *key) {
+bool tableDelete(ObjTable *t, Value key) {
 	if(t->count == 0)
 		return false;
 
@@ -146,8 +162,8 @@ bool tableDelete(ObjTable *t, ObjString *key) {
 }
 
 void tableAddAll(VM *vm, ObjTable *from, ObjTable *to) {
-	for(ssize_t i=0; i<=from->capacityMask; i+=2) {
-		Value *e = &from->entries[i];
+	for(size_t i=1; i<=from->capacityMask; i+=2) {
+		Value *e = &from->entries[i-1];
 		if(!IS_NIL(*e))
 			tableSet(vm, to, KEY(e), VALUE(e));
 	}
@@ -166,9 +182,9 @@ ObjString *tableFindString(ObjTable *t, const char *chars, size_t length, uint32
 				return NULL;
 		} else {
 			assert(IS_STRING(*e));
-			if(KEY(e)->length == length && KEY(e)->hash == hash
-					&& memcmp(KEY(e)->chars, chars, length) == 0)
-				return KEY(e);
+			if(AS_STRING(KEY(e))->length == length && AS_STRING(KEY(e))->hash == hash
+					&& memcmp(AS_STRING(KEY(e))->chars, chars, length) == 0)
+				return AS_STRING(KEY(e));
 		}
 
 		index = (index+2) & t->capacityMask;
@@ -182,7 +198,7 @@ void fprintTable(FILE *restrict stream, ObjTable *t) {
 	}
 
 	fprintf(stream, "{");
-	ssize_t i = 0;
+	size_t i = 0;
 	while(IS_NIL(t->entries[i])) i+=2;
 	fprintValue(stream, t->entries[i]);
 	fprintf(stream, ": ");
@@ -209,12 +225,12 @@ size_t count(ObjTable *t) {
 }
 
 void markTable(VM *vm, ObjTable *t) {
-	for(ssize_t i=0; i<=t->capacityMask; i++)
+	for(size_t i=0; i<=t->capacityMask; i++)
 		markValue(vm, t->entries[i]);
 }
 
 void tableRemoveWhite(ObjTable *t) {
-	for(ssize_t i=0; i<=t->capacityMask; i+=2) {
+	for(size_t i=0; i<=t->capacityMask; i+=2) {
 		Value *e = &t->entries[i];
 		if(!IS_NIL(*e) && isWhite(AS_OBJ(*e)))
 			tableDelete(t, KEY(e));

@@ -80,6 +80,7 @@ static void markCompilerRoots(VM *vm) {
 	for(Compiler *c = vm->currentCompiler; c != NULL; c = c->enclosing) {
 		markObject(vm, (Obj*)c->name);
 		markObject(vm, (Obj*)c->chunk.constants);
+		markObject(vm, (Obj*)c->chunk.constantIndices);
 	}
 }
 

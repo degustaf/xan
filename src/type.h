@@ -96,6 +96,7 @@ typedef struct {
 	uint32_t *code;
 	size_t *lines;
 	ObjArray *constants;
+	ObjTable *constantIndices;
 } Chunk;
 
 typedef struct {
