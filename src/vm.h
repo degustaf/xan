@@ -5,7 +5,7 @@
 
 #include "type.h"
 
-CallFrame *incFrame(VM *vm, Reg stackUsed, Value *base, ObjClosure *function);
+Value *incFrame(VM *vm, Reg stackUsed, Value *base, ObjClosure *function);
 CallFrame *decFrame(VM *vm);
 
 #endif /* XAN_VM_H */

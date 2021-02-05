@@ -59,27 +59,31 @@ ObjClass *newClass(VM *vm, ObjString *name) {
 	return klass;
 }
 
-void defineNative(VM *vm, ObjTable *t, CallFrame *frame, const NativeDef *f) {
-	frame->slots[0] = OBJ_VAL(copyString(f->name, strlen(f->name), vm));
-	frame->slots[1] = OBJ_VAL(newNative(vm, f->method));
-	assert(IS_STRING(frame->slots[0]));
-	tableSet(vm, t, frame->slots[0], frame->slots[1]);
+void defineNative(VM *vm, ObjTable *t, Value *slots, const NativeDef *f) {
+	slots[0] = OBJ_VAL(copyString(f->name, strlen(f->name), vm));
+	slots[1] = OBJ_VAL(newNative(vm, f->method));
+	assert(IS_STRING(slots[0]));
+	tableSet(vm, t, slots[0], slots[1]);
 }
 
-void defineNativeClass(VM *vm, ObjTable *t, CallFrame *frame, ObjClass *klass) {
+void defineNativeClass(VM *vm, ObjTable *t, Value *slots, ObjClass *klass) {
+	assert(vm->frameCount + 1 < vm->frameSize);
+	// This prevents a reallocation of vm->frames when incFrame is called.
+
 	klass->name = copyString(klass->cname, strlen(klass->cname), vm);
 
 	// klass is statically allocated, so it avoids newClass. This puts it in the linked list of objects for the garbage collector.
 	klass->obj.next = vm->objects;
 	vm->objects = (Obj*)klass;
 
-	frame->slots[0] = OBJ_VAL(klass);
+	slots[0] = OBJ_VAL(klass);
 
-	CallFrame *frame2 = incFrame(vm, 2, &frame->slots[1], NULL);
+	Value *slots2 =  incFrame(vm, 2, &slots[1], NULL);
+	slots = NULL;	// incFrame could invalidate slots. This prevents us from using it later.
 	klass->methods = newTable(vm, 0);
 	assert(klass->methods);
 	for(size_t i = 0; klass->methodsArray[i].name; i++)
-		defineNative(vm, klass->methods, frame2, &klass->methodsArray[i]);
+		defineNative(vm, klass->methods, slots2, &klass->methodsArray[i]);
 	decFrame(vm);
 
 	tableSet(vm, t, OBJ_VAL(klass->name), OBJ_VAL(klass));
@@ -95,17 +99,21 @@ ObjModule * newModule(VM *vm, ObjString *name) {
 	return module;
 }
 
-ObjModule *defineNativeModule(VM *vm, CallFrame *frame, ModuleDef *def) {
-	frame->slots[0] = OBJ_VAL(copyString(def->name, strlen(def->name), vm));
-	ObjModule *ret = newModule(vm, AS_STRING(frame->slots[0]));
-	frame->slots[0] = OBJ_VAL(ret);		// For GC.
+ObjModule *defineNativeModule(VM *vm, Value *slots, ModuleDef *def) {
+	assert(vm->frameCount + 2 < vm->frameSize);
+	// This prevents a reallocation of vm->frames when incFrame is called, or when defineNativeClass is called.
 
-	CallFrame *frame2 = incFrame(vm, 1, &frame->slots[1], NULL);
+	slots[0] = OBJ_VAL(copyString(def->name, strlen(def->name), vm));
+	ObjModule *ret = newModule(vm, AS_STRING(slots[0]));
+	slots[0] = OBJ_VAL(ret);		// For GC.
+
+	Value *slots2 = incFrame(vm, 1, &slots[1], NULL);
+	slots = NULL;	// incFrame could invalidate slots. This prevents us from using it later.
 	for(ObjClass **c = def->classes; *c; c++)
-		defineNativeClass(vm, ret->items, frame2, *c);
+		defineNativeClass(vm, ret->items, slots2, *c);
 	assert(def->methods);
 	for(NativeDef *m = def->methods; m->name; m++)
-		defineNative(vm, ret->items, frame2, m);
+		defineNative(vm, ret->items, slots2, m);
 	decFrame(vm);
 
 	return ret;

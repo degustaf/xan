@@ -19,11 +19,6 @@
 #include "debug.h"
 #endif
 
-static void resetStack(VM *vm) {
-	vm->stackTop = vm->stack;
-	vm->frameCount = 0;
-}
-
 static bool isFalsey(Value v) {
 	return IS_NIL(v) || (IS_BOOL(v) && !AS_BOOL(v))
 					 || (IS_ARRAY(v) && AS_ARRAY(v)->count == 0)
@@ -44,29 +39,6 @@ static Value concatenate(VM *vm, ObjString *b, ObjString *c) {
 #define runtimeError(vm, ...) do { \
 	ExceptionFormattedStr(vm, __VA_ARGS__); \
 } while(false)
-/*
-static void runtimeError(VM *vm, const char* format, ...) {
-	va_list args;
-	va_start(args, format);
-	vfprintf(stderr, format, args);
-	va_end(args);
-	fputs("\n", stderr);
-
-	for(size_t i = vm->frameCount; i > 0; i--) {
-		CallFrame *frame = &vm->frames[i-1];
-		ObjFunction *f = frame->c->f;
-		size_t instruction = frame->ip - f->chunk.code - 1;	// We have already advanced ip.
-		fprintf(stderr, "[line %zu] in ", frame->c->f->chunk.lines[instruction]);
-		if(f->name == NULL) {
-			fprintf(stderr, "script\n");
-		} else {
-			fprintf(stderr, "%s()\n", f->name->chars);
-		}
-	}
-
-	resetStack(vm);
-}
-*/
 
 static void growStack(VM *vm, size_t space_needed) {
 	// pointers into stack: stackTop, stackLast, vm->frames[].slots
@@ -83,10 +55,16 @@ static void growStack(VM *vm, size_t space_needed) {
 		vm->frames[i].slots = (Value*)((char*)vm->frames[i].slots + ((char*)vm->stack - (char*)oldStack));
 }
 
-CallFrame *incFrame(VM *vm, Reg stackUsed, Value *base, ObjClosure *function) {
-	if(vm->frameCount == FRAMES_MAX) {
-		runtimeError(vm, "Stack overflow.");
-		return NULL;
+Value *incFrame(VM *vm, Reg stackUsed, Value *base, ObjClosure *function) {
+	if(vm->frameCount == vm->frameSize) {
+		size_t oldFrameSize = vm->frameSize;
+		vm->frameSize = GROW_CAPACITY(vm->frameSize);
+		vm->frames = GROW_ARRAY(vm->frames, CallFrame, oldFrameSize, vm->frameSize);
+		// This will invalidate the value of frame in run.
+		if(vm->frames == NULL) {
+			runtimeError(vm, "Stack overflow.");
+			return NULL;
+		}
 	}
 	if(base + 1 + stackUsed > vm->stackLast) {
 		size_t base_index = base - vm->stack;
@@ -100,7 +78,7 @@ CallFrame *incFrame(VM *vm, Reg stackUsed, Value *base, ObjClosure *function) {
 	frame->c = function;
 	frame->slots = base + 1;
 
-	return frame;
+	return frame->slots;
 }
 
 CallFrame *decFrame(VM *vm) {
@@ -109,40 +87,55 @@ CallFrame *decFrame(VM *vm) {
 }
 
 void initVM(VM *vm) {
-	vm->objects = NULL;
-	vm->grayCount = 0;
-	vm->grayCapacity = 0;
-	vm->grayStack = NULL;
+	// Initialize VM without calling allocator.
+	vm->frames = NULL;
+	vm->frameCount = 0;
+	vm->frameSize = 0;
+	vm->tryCount = 0;
+	vm->stack = NULL;
+	vm->stackTop = vm->stack;
+	vm->stackLast = NULL;
+	vm->stackSize = 0;
+
+	vm->exception = NIL_VAL;
+	vm->strings = NULL;
+	vm->globals = NULL;
+	vm->initString = NULL;
 	vm->openUpvalues = NULL;
+	vm->objects = NULL;
 	vm->currentCompiler = NULL;
 	vm->bytesAllocated = 0;
 	vm->nextGC = 1024 * 1024;
-	vm->strings = NULL;
-	vm->globals = NULL;
-	vm->frameCount = 0;
-	vm->tryCount = 0;
+	vm->grayCount = 0;
+	vm->grayCapacity = 0;
+	vm->grayStack = NULL;
 
-	vm->exception = NIL_VAL;
-	vm->initString = NULL;
+	// Now we can call the allocator.
+	vm->frameSize = FRAMES_MAX;
+	vm->frames = GROW_ARRAY(NULL, CallFrame, 0, vm->frameSize);
+	vm->frameCount = 0;
+	for(size_t i=0; i<vm->frameSize; i++) {
+		CallFrame *fr = vm->frames + i;
+		fr->c = NULL;
+		fr->ip = NULL;
+		fr->slots = NULL;
+	}
+
 	vm->stackSize = BASE_STACK_SIZE;
-	vm->stack = NULL;
-	vm->stackLast = NULL;
-	resetStack(vm);
 	vm->stack = GROW_ARRAY(NULL, Value, 0, vm->stackSize);
 	vm->stackLast = vm->stack + vm->stackSize - 1;
 	for(size_t i = 0; i <vm->stackSize; i++)
 		vm->stack[i] = NIL_VAL;
-	resetStack(vm);
+	vm->stackTop = vm->stack;
 
 	vm->strings = newTable(vm, 0);
 	vm->globals = newTable(vm, 0);
 	vm->initString = copyString("init", 4, vm);
 
-	CallFrame *frame = incFrame(vm, 2, &vm->stack[1], NULL);
-	ObjModule *builtinM = defineNativeModule(vm, frame, &builtinDef);
+	Value *slots = incFrame(vm, 2, &vm->stack[1], NULL);
+	assert(slots);	// If we're out of memory now, we have no chance and might as well bail.
+	ObjModule *builtinM = defineNativeModule(vm, slots, &builtinDef);
 	vm->globals = builtinM->items;
-//		for(const NativeDef *f = builtins; f->name; f++)
-//			defineNative(vm, vm->globals, frame, f);
 	decFrame(vm);
 }
 
@@ -162,10 +155,11 @@ static bool call(VM *vm, ObjClosure *function, Value *base, Reg argCount, Reg re
 		return false;
 	}
 
-	CallFrame *frame = incFrame(vm, function->f->stackUsed, base, function);
-	if(frame == NULL)
+	Value *slots = incFrame(vm, function->f->stackUsed, base, function);
+	if(slots == NULL)
 		return false;
 
+	CallFrame *frame = &vm->frames[vm->frameCount-1];
 	frame->ip = function->f->chunk.code;
 	return true;
 }

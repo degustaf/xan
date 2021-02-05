@@ -168,11 +168,12 @@ typedef struct Compiler {
 	Reg maxReg;
 } Compiler;
 
-typedef struct {
+struct sCallFrame {
 	ObjClosure *c;
 	uint32_t *ip;
 	Value *slots;
-} CallFrame;
+};
+typedef struct sCallFrame CallFrame;
 
 struct try_frame {
 	size_t frame;
@@ -181,16 +182,17 @@ struct try_frame {
 };
 
 struct sVM {
-	CallFrame frames[FRAMES_MAX];
+	CallFrame *frames;
 	struct try_frame _try[TRY_MAX];
 	size_t frameCount;
+	size_t frameSize;
 	size_t tryCount;
 	Value *stack;
 	Value *stackTop;
 	Value *stackLast;
-	Value exception;
 	size_t stackSize;
 
+	Value exception;
 	ObjTable *strings;
 	ObjTable *globals;
 	ObjString *initString;
