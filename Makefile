@@ -81,6 +81,8 @@ releasebuild/xan$(TARGET_EXTENSION):
 endif
 
 $(PATHB)/%$(TARGET_EXTENSION): $(PATHB)/%.o $(PATHLB)/$(LIBRARY) | $(PATHB)
+	echo $(OS)
+	echo $(OSTYPE)
 	$(LINK) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 $(PATHLB)/$(LIBRARY): $(OBJS)

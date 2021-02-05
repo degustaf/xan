@@ -27,12 +27,6 @@ jobs:
           arch: ppc64le
           env: ARCH="-m32"
     include:
-        - os: windows
-          compiler: mingw
-          env: ARCH="-m64"
-        - os: windows
-          compiler: mingw
-          env: ARCH="-m32"
         - arch: arm64
           os: linux
           compiler: gcc
@@ -43,9 +37,9 @@ jobs:
           env:
 
 install:
-    - if [ $TRAVIS_OS_NAME = windows ]; then
+    - if [ $TRAVIS_OS_NAME = "windows" ]; then
         choco install make;
-      elif [ "$ARCH" = -m32 ] && [ $TRAVIS_CPU_ARCH = amd64 ] ; then
+      elif [ $TRAVIS_OS_NAME != "osx"] && [ "$ARCH" = -m32 ] && [ $TRAVIS_CPU_ARCH = amd64 ] ; then
         sudo apt-get install gcc-multilib;
       fi
 

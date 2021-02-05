@@ -1,0 +1,98 @@
+fun Pfannkuchen(n) {
+	var maxFlipsCount = 0;
+	var checkSum = 0;
+	var perm1 = Array(n);
+	var count = Array(n);
+
+	for(var i=0; i<n; i = i+1)
+		perm1[i] = i;
+	var r = n;
+
+	for(var permCount = 0; true; permCount = permCount + 1) {
+		// print("permCount = "); print(permCount);	//debug
+		for(;r > 1; r = r - 1)
+			count[r-1] = r;
+		var perm = Array(n);
+		for(var i=0; i<n; i=i+1)
+			perm[i] = perm1[i];
+
+		var flipsCount = 0;
+		var k;
+
+		while((k=perm[0]) != 0) {
+			// print("k, permCount = "); print(k); print(permCount);	//debug
+			// for(var i=0; i<n; i = i + 1) {
+			// 	print("perm[i] = "); print(perm[i]);
+			// }
+			var k2 = (k+1)/2;
+			k2 = k2 - (k2 % 1);
+			// print("k2 = "); print(k2);	//debug
+			for(var i=0; i<k2; i = i + 1) {
+				// print("i = "); print(i);	//debug
+				var temp = perm[i];
+				perm[i] = perm[k-i];
+				perm[k-i] = temp;
+				// print("perm[i] = "); print(perm[i]);	// debug
+				// print("perm[k-i] = "); print(perm[k-i]);	// debug
+				// return;
+			}
+			flipsCount = flipsCount + 1;
+		}
+
+		if(flipsCount > maxFlipsCount)
+			maxFlipsCount = flipsCount;
+		if(permCount % 2 == 0) {
+			checkSum = checkSum + flipsCount;
+		} else {
+			checkSum = checkSum - flipsCount;
+		}
+
+		for(;true; r = r + 1) {
+			// print("r = "); print(r);	//debug
+			if(r == n) {
+				print(checkSum);
+				return maxFlipsCount;
+			}
+
+			var perm0 = perm1[0];
+			for(var i=0; i<r; i = i + 1)
+				perm1[i] = perm1[i + 1];
+			perm1[r] = perm0;
+
+			count[r] = count[r] - 1;
+			if(count[r] > 0)
+				break;
+			r++;
+		}
+	}
+}
+
+print(Pfannkuchen(3));
+// 2, 2
+
+print(Pfannkuchen(4));
+// 4, 4
+
+print(Pfannkuchen(5));
+// 11, 7
+
+print(Pfannkuchen(6));
+// 49, 10
+
+print(Pfannkuchen(7));
+// 228, 16
+
+print(Pfannkuchen(8));
+// 1616, 22
+
+print(Pfannkuchen(9));
+// 8629, 30
+
+print(Pfannkuchen(10));
+// 73196, 38
+
+// 556355
+// Pfannkuchen(11) = 51
+// 
+// 3968050
+// Pfannkuchen(12) = 65
