@@ -10,6 +10,7 @@ ObjArray *newArray(VM *vm, size_t count) {
 	array->count = 0;
 	array->capacity = 0;
 	array->values = NULL;
+	array->fields = NULL;
 	array->klass = &arrayDef;
 	if(count) {
 		size_t capacity = round_up_pow_2(count);
@@ -64,11 +65,7 @@ NativeDef arrayMethods[] = {
 };
 
 ObjClass arrayDef = {
-	{
-		OBJ_CLASS,
-		false,
-		NULL,
-	},
+	CLASS_HEADER,
 	"Array",
 	arrayMethods,
 	NULL,

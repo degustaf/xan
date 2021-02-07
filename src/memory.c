@@ -172,8 +172,13 @@ static void blackenObject(VM *vm, Obj *o) {
 			markValue(vm, e->msg);
 			break;
 		}
+		case OBJ_STRING: {
+			ObjString *s = (ObjString*)o;
+			markObject(vm, (Obj*)s->klass);
+			markObject(vm, (Obj*)s->fields);
+			break;
+		}
 		case OBJ_NATIVE:
-		case OBJ_STRING:
 			break;
 	}
 }

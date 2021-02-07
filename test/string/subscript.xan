@@ -1,0 +1,6 @@
+print("abc"[0]);	// expect: a
+print("abc"[1]);	// expect: b
+print("abc"[2]);	// expect: c
+
+// var str = "xyz";
+// for(var i=0; i

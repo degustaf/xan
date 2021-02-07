@@ -26,7 +26,7 @@ static inline bool isObjType(Value v, ObjType t) {
 OBJ_BUILDER(IS_TYPE, NOTHING)
 
 static inline bool HAS_PROPERTIES(Value value) {
-	return IS_INSTANCE(value) || IS_ARRAY(value);
+	return IS_INSTANCE(value) || IS_ARRAY(value) || IS_STRING(value);
 }
 
 #define AS_ARRAY(value)        ((ObjArray*)AS_OBJ(value))

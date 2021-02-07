@@ -1,0 +1,106 @@
+
+class IUB {
+	init(p, c) {
+		this.p = p;
+		this.c = c;
+	}
+}
+
+var iub = [
+	IUB(0.27, "a"),
+	IUB(0.12, "c"),
+	IUB(0.12, "g"),
+	IUB(0.27, "t"),
+	IUB(0.02, "B"),
+	IUB(0.02, "D"),
+	IUB(0.02, "H"),
+	IUB(0.02, "K"),
+	IUB(0.02, "M"),
+	IUB(0.02, "N"),
+	IUB(0.02, "R"),
+	IUB(0.02, "S"),
+	IUB(0.02, "V"),
+	IUB(0.02, "W"),
+	IUB(0.02, "Y")
+];
+
+var homoSapiens = [
+	IUB(0.3029549426680, "a"),
+	IUB(0.1979883004921, "c"),
+	IUB(0.1975473066391, "g"),
+	IUB(0.3015094502008, "t")
+];
+
+fun makeCumulative(list) {
+	var cp = 0;
+	for(var i=0; i<list.count(); i = i+1) {
+		cp = cp + list[i].p;
+		list[i].p = cp;
+	}
+}
+
+fun gen_gen_random(seed) {
+	var last = seed;
+	fun gen_random(max) {
+		var IM = 139968;
+		var IA = 3877;
+		var IC = 29573;
+		last = (last * IA + IC) % IM;
+		return max * last / IM;
+	}
+	return gen_random;
+}
+
+var gen_random = gen_gen_random(42);
+
+fun repeat(alu) {
+	var i = 0;
+	fun f() {
+		if(i >= alu.length())
+			i = 0;
+		i = i + 1;
+		return alu[i-1];
+	}
+	return f;
+}
+
+fun random(cdf) {
+	fun f() {
+		var p = gen_random(1);
+		for(var i=0; i<cdf.count(); i = i + 1) {
+			if(p < cdf[i].p)
+				return cdf[i].c;
+		}
+		// return cdf[cdf.count()-1].c
+	}
+	return f;
+}
+
+var LENGTH = 60;
+
+fun make(id, desc, n, f) {
+	print(">" + id + " " + desc);
+	var line = "";
+	for(var i=0; i<n; i = i+1) {
+		line = line + f();
+		if(line.length() == LENGTH) {
+			print(line);
+			line = "";
+		}
+	}
+	if(line.length() > 0)
+		print(line);
+}
+
+var alu = "GGCCGGGCGCGGTGGCTCACGCCTGTAATCCCAGCACTTTGGGAGGCCGAGGCGGGCGGATCACCTGAGGTCAGGAGTTCGAGACCAGCCTGGCCAACATGGTGAAACCCCGTCTCTACTAAAAATACAAAAATTAGCCGGGCGTGGTGGCGCGCGCCTGTAATCCCAGCTACTCGGGAGGCTGAGGCAGGAGAATCGCTTGAACCCGGGAGGCGGAGGTTGCAGTGAGCCGAGATCGCGCCACTGCACTCCAGCCTGGGCGACAGAGCGAGACTCCGTCTCAAAAA"; 
+fun main(n) {
+	makeCumulative(iub);
+	makeCumulative(homoSapiens);
+
+	make("ONE",   "Homo sapiens alu",       n * 2, repeat(alu));
+	make("TWO",   "IUB ambiguity codes",    n * 3, random(iub));
+	make("THREE", "Homo sapiens frequency", n * 5, random(homoSapiens));
+}
+
+main(250000);
+// main(25000000)

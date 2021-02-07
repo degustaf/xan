@@ -1,0 +1,13 @@
+fun gen_gen_random(seed) {
+	var last = seed;
+	fun gen_random(max) {
+		var IM = 139968;
+		var IA = 3877;
+		var IC = 29573;
+		last = (last * IA + IC) % IM;
+		return max * last / IM;
+	}
+	return gen_random;
+}
+
+print(gen_gen_random(42)(1));	// expect: 0.37465

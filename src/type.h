@@ -84,7 +84,7 @@ typedef struct {
 
 // TODO turn chars into a flexible array member to optimize by minimizing allocations.
 struct sObjString {
-	Obj obj;
+	INSTANCE_FIELDS;
 	size_t length;
 	uint32_t hash;
 	char *chars;
@@ -226,6 +226,8 @@ struct sObjClass {
 	ObjTable *methods;
 	bool isException;
 };
+
+#define CLASS_HEADER {OBJ_CLASS, false, NULL,}
 
 typedef struct {
 	Obj obj;

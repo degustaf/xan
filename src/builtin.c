@@ -7,6 +7,7 @@
 #include "exception.h"
 #include "object.h"
 #include "table.h"
+#include "xanString.h"
 
 static bool clockNative(VM *vm, int argCount, Value *args) {
 	if(argCount != 0) {
@@ -40,6 +41,7 @@ static bool sqrtNative(VM *vm, int argCount, Value *args) {
 ObjClass *BuiltinClasses[] = {
 	&arrayDef,
 	&exceptionDef,
+	&stringDef,
 	&tableDef,
 	NULL
 };

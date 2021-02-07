@@ -248,11 +248,7 @@ NativeDef tableMethods[] = {
 };
 
 ObjClass tableDef = {
-	{
-		OBJ_CLASS,
-		false,
-		NULL
-	},
+	CLASS_HEADER,
 	"Table",
 	tableMethods,
 	NULL,

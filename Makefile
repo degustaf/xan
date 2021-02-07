@@ -81,8 +81,6 @@ releasebuild/xan$(TARGET_EXTENSION):
 endif
 
 $(PATHB)/%$(TARGET_EXTENSION): $(PATHB)/%.o $(PATHLB)/$(LIBRARY) | $(PATHB)
-	echo $(OS)
-	echo $(OSTYPE)
 	$(LINK) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 $(PATHLB)/$(LIBRARY): $(OBJS)
@@ -95,6 +93,8 @@ $(PATHB)/%.o: $(PATHC)/%.c | $(PATHB) $(PATHD)
 	$(POSTCOMPILE)
 
 $(PATHLB)/%.o: $(PATHS)/%.c | $(PATHLB) $(PATHD)
+	echo $(OS)
+	echo $(OSTYPE)
 	$(COMPILE) -c $< -o $@
 	$(POSTCOMPILE)
 

@@ -46,11 +46,7 @@ NativeDef exceptionMethods[] = {
 };
 
 ObjClass exceptionDef = {
-	{
-		OBJ_CLASS,
-		false,
-		NULL
-	},
+	CLASS_HEADER,
 	"Exception",
 	exceptionMethods,
 	NULL,

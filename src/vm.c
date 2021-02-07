@@ -8,12 +8,13 @@
 #include <string.h>
 
 #include "array.h"
+#include "builtin.h"
 #include "chunk.h"
 #include "exception.h"
 #include "memory.h"
 #include "parse.h"
 #include "table.h"
-#include "builtin.h"
+#include "xanString.h"
 
 #if defined(DEBUG_TRACE_EXECUTION) || defined(DEBUG_STACK_USAGE)
 #include "debug.h"
@@ -216,6 +217,10 @@ static bool bindMethod(VM *vm, ObjInstance *instance, ObjClass *klass, Value nam
 	assert(instance);
 	assert(klass->methods);
 	if(!tableGet(klass->methods, name, &method)) {
+		if(instance->klass == &stringDef) {
+			runtimeError(vm, "Only instances have properties.");
+			return false;
+		}
 		assert(IS_STRING(name));
 		runtimeError(vm, "Undefined property '%s'.", AS_STRING(name)->chars);
 		return false;
@@ -235,7 +240,7 @@ static bool invokeMethod(VM *vm, Value *slot, ObjString *name, Reg retCount, Reg
 	}
 	ObjInstance *instance = AS_INSTANCE(*slot);
 	assert(instance->klass->methods);
-	if((!IS_ARRAY(*slot)) && (tableGet(instance->fields, OBJ_VAL(name), slot+1))) {
+	if((!(IS_ARRAY(*slot) || IS_STRING(*slot))) && (tableGet(instance->fields, OBJ_VAL(name), slot+1))) {
 		return callValue(vm, slot+1, retCount, argCount);
 	}
 	if(!tableGet(instance->klass->methods, OBJ_VAL(name), &method)) {
@@ -479,7 +484,7 @@ OP_JUMP:
 				DISPATCH;
 			}
 			TARGET(OP_SET_UPVAL): {
-				*frame->c->upvalues[RD(bytecode)]->location = frame->slots[RA(bytecode)];
+				*frame->c->upvalues[RA(bytecode)]->location = frame->slots[RD(bytecode)];
 				DISPATCH;
 			}
 			TARGET(OP_CLOSURE): {
@@ -509,7 +514,7 @@ OP_JUMP:
 					ObjInstance *instance = AS_INSTANCE(v);
 					Value name = frame->slots[RC(bytecode)];
 					assert(IS_STRING(name));
-					if((!IS_ARRAY(v)) && (tableGet(instance->fields, name, &frame->slots[RA(bytecode)]))) {
+					if((!(IS_ARRAY(v) || IS_STRING(v))) && (tableGet(instance->fields, name, &frame->slots[RA(bytecode)]))) {
 						DISPATCH;
 					} else if(bindMethod(vm, instance, instance->klass, name, &frame->slots[RA(bytecode)])) {
 						DISPATCH;
@@ -523,14 +528,17 @@ OP_JUMP:
 			TARGET(OP_SET_PROPERTY): {
 				int16_t rb = ((int16_t)(Reg)(RB(bytecode) + 1))-1;
 				Value v = frame->slots[rb];
-				if(!HAS_PROPERTIES(v)) {
-					runtimeError(vm, "Only instances have fields.");
-					goto exception_unwind;
+				if(HAS_PROPERTIES(v)) {
+					ObjInstance *instance = AS_INSTANCE(v);
+					Value name = frame->slots[RC(bytecode)];
+					assert(IS_STRING(name));
+					if(!(IS_ARRAY(v) || IS_STRING(v))) {
+						tableSet(vm, instance->fields, name, frame->slots[RA(bytecode)]);
+						DISPATCH;
+					}
 				}
-				ObjInstance *instance = AS_INSTANCE(v);
-				assert(IS_STRING(frame->slots[RC(bytecode)]));
-				tableSet(vm, instance->fields, frame->slots[RC(bytecode)], frame->slots[RA(bytecode)]);
-				DISPATCH;
+				runtimeError(vm, "Only instances have fields.");
+				goto exception_unwind;
 			}
 			TARGET(OP_INVOKE): {	// RA = object/dest reg; RA + 1 = property reg; RB = retCount; RC = argCount
 				int16_t ra = ((int16_t)(Reg)(RA(bytecode) + 1))-1;
@@ -609,8 +617,21 @@ OP_JUMP:
 						runtimeError(vm, "Subscript out of bounds.");
 						goto exception_unwind;
 					}
+				} else if(IS_STRING(v)) {
+					ObjString *s = AS_STRING(v);
+					v = frame->slots[RC(bytecode)];
+					if((!IS_NUMBER(v)) || (AS_NUMBER(v) != (double)(int)AS_NUMBER(v))) {
+						runtimeError(vm, "Strings can only be subscripted by integers.");
+						goto exception_unwind;
+					}
+					int i = (int)AS_NUMBER(v);
+					if((i < 0) || ((unsigned int)i >= s->length)) {
+						runtimeError(vm, "Subscript out of range.");
+						goto exception_unwind;
+					}
+					frame->slots[RA(bytecode)] = OBJ_VAL(copyString(s->chars + i, 1, vm));
 				} else {
-					runtimeError(vm, "Only arrays and tables can be subscripted.");
+					runtimeError(vm, "Only arrays, tables, and strings can be subscripted.");
 					goto exception_unwind;
 				}
 				DISPATCH;
