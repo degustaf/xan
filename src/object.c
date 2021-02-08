@@ -8,14 +8,16 @@
 #include "memory.h"
 #include "table.h"
 
-ObjFunction *newFunction(VM *vm, size_t uvCount) {
-	ObjFunction *f = (ObjFunction*)allocateObject(sizeof(*f) + uvCount * sizeof(uint16_t), OBJ_FUNCTION, vm);
+ObjFunction *newFunction(VM *vm, size_t uvCount, size_t varArityCount) {
+	ObjFunction *f = (ObjFunction*)allocateObject(sizeof(*f) + uvCount * sizeof(uint16_t) + varArityCount * sizeof(size_t), OBJ_FUNCTION, vm);
 	vm->frames[vm->frameCount-1].slots[0] = OBJ_VAL(f);
 
 	f->minArity = 0;
+	f->maxArity = 0;
 	f->uvCount = uvCount;
 	f->stackUsed = 0;
 	f->name = NULL;
+	f->code_offsets = (size_t*)&f->uv[f->uvCount];
 	initChunk(vm, &f->chunk);
 	return f;
 }

@@ -102,10 +102,12 @@ typedef struct {
 typedef struct {
 	Obj obj;
 	int minArity;
+	int maxArity;
 	size_t uvCount;
 	Reg stackUsed;
 	Chunk chunk;
 	ObjString *name;
+	size_t *code_offsets;
 	uint16_t uv[];
 } ObjFunction;
 
@@ -155,6 +157,7 @@ typedef struct Compiler {
 	FunctionType type;
 	Local locals[UINT8_COUNT];
 	uint16_t upvalues[UINT8_COUNT];
+	size_t code_offsets[255];
 	size_t uvCount;
 	int minArity;
 	int maxArity;

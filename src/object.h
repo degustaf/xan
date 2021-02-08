@@ -59,7 +59,7 @@ ObjArray *newArray(VM *vm, size_t count);
 ObjBoundMethod *newBoundMethod(VM *vm, Value receiver, Value method);
 ObjClass *newClass(VM *vm, ObjString *name);
 ObjClosure *newClosure(VM *vm, ObjFunction *f);
-ObjFunction *newFunction(VM *vm, size_t uvCount);
+ObjFunction *newFunction(VM *vm, size_t uvCount, size_t varArityCount);
 ObjInstance *newInstance(VM *vm, ObjClass *klass);
 ObjModule * newModule(VM *vm, ObjString *name);
 ObjNative *newNative(VM *vm, NativeFn function);

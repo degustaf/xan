@@ -1,0 +1,6 @@
+fun f(x, y = x * x) {
+	return y;
+}
+
+print(f(2,3));	// expect: 3
+print(f(2));	// expect: 4

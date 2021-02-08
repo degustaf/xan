@@ -152,8 +152,12 @@ void freeVM(VM *vm) {
 }
 
 static bool call(VM *vm, ObjClosure *function, Value *base, Reg argCount, Reg retCount) {
-	if(argCount != function->f->minArity) {	// TODO make variadic functions.
-		runtimeError(vm, "Expected %d arguments but got %d.", function->f->minArity, argCount);
+	if(argCount < function->f->minArity) {
+		runtimeError(vm, "Expected at least %d arguments but got %d.", function->f->minArity, argCount);
+		return false;
+	}
+	if(argCount > function->f->maxArity) {
+		runtimeError(vm, "Expected at most %d arguments but got %d.", function->f->maxArity, argCount);
 		return false;
 	}
 
@@ -162,7 +166,8 @@ static bool call(VM *vm, ObjClosure *function, Value *base, Reg argCount, Reg re
 		return false;
 
 	CallFrame *frame = &vm->frames[vm->frameCount-1];
-	frame->ip = function->f->chunk.code;
+	size_t codeOffset = argCount - function->f->minArity;
+	frame->ip = function->f->chunk.code + function->f->code_offsets[codeOffset];
 	return true;
 }
 

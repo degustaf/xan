@@ -829,6 +829,7 @@ static void initCompiler(Parser *p, Compiler *compiler, FunctionType type) {
 	compiler->last_target = NO_JUMP;
 	compiler->inLoop = false;
 	compiler->nextReg = compiler->actVar = compiler->maxReg = 0;
+	compiler->code_offsets[0] = 0;
 #ifdef DEBUG_PARSER
 	fprintf(stderr, "nextReg = %d\n", compiler->nextReg);
 #endif /* DEBUG_PARSER */
@@ -856,9 +857,12 @@ static ObjFunction *endCompiler(Parser *p) {
 		}
 		emitReturn(p, &e);
 	}
-	ObjFunction *f = newFunction(p->vm, p->currentCompiler->uvCount);
+	assert(p->currentCompiler->maxArity - p->currentCompiler->minArity >= 0);
+	ObjFunction *f = newFunction(p->vm, p->currentCompiler->uvCount, p->currentCompiler->maxArity - p->currentCompiler->minArity + 1);
 	f->minArity = p->currentCompiler->minArity;
+	f->maxArity = p->currentCompiler->maxArity;
 	memcpy(&f->chunk, &p->currentCompiler->chunk, sizeof(Chunk));
+	memcpy(f->code_offsets, &p->currentCompiler->code_offsets, (p->currentCompiler->maxArity - p->currentCompiler->minArity + 1) * sizeof(size_t));
 	f->name = p->currentCompiler->name;
 	f->stackUsed = p->currentCompiler->maxReg;
 	for(size_t i=0; i<f->uvCount; i++)
@@ -1593,6 +1597,7 @@ static void block(Parser *p) {
 static void function(Parser *p, expressionDescription *e, FunctionType type) {
 	PRINT_FUNCTION;
 	Compiler c;
+
 	p->vm->currentCompiler = &c;
 	initCompiler(p, &c, type);
 	beginScope(&c);
@@ -1600,31 +1605,34 @@ static void function(Parser *p, expressionDescription *e, FunctionType type) {
 	// Compile parameters.
 	consume(p, TOKEN_LEFT_PAREN, "Expect '(' after function name.");
 	if(!check(p, TOKEN_RIGHT_PAREN)) {
+		expressionDescription v;
 		do {
 			c.minArity++;
 			if(c.minArity > 255)
 				errorAtCurrent(p, "Cannot have more than 255 parameters.");
 
-			expressionDescription v;
 			parseVariable(p, &v, "Expect parameter name.");
 			regReserve(&c, 1);
 			markInitialized(p);
 		} while(match(p, TOKEN_COMMA));
+
+		c.maxArity = c.minArity;
 		if(match(p, TOKEN_EQUAL)) {
-			c.maxArity = c.minArity;
 			c.minArity--;
-			// TODO
+			assign(p, &v);
+			c.code_offsets[c.maxArity - c.minArity] = c.chunk.count;
 
 			while(match(p, TOKEN_COMMA)) {
 				c.maxArity++;
 				if(c.maxArity > 255)
 					errorAtCurrent(p, "Cannot have more than 255 parameters.");
 	
-				expressionDescription v;
 				parseVariable(p, &v, "Expect parameter name.");
 				regReserve(&c, 1);
 				markInitialized(p);
 				if(match(p, TOKEN_EQUAL)) {
+					assign(p, &v);
+					c.code_offsets[c.maxArity - c.minArity] = c.chunk.count;
 				} else if(c.defaultArgs) {
 					errorAtCurrent(p, "non-default argument follows default argument.");
 				}
