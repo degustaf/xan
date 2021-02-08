@@ -225,13 +225,16 @@ size_t count(ObjTable *t) {
 }
 
 void markTable(VM *vm, ObjTable *t) {
-	for(size_t i=0; i<=t->capacityMask; i++)
-		markValue(vm, t->entries[i]);
+	for(size_t i=1; i<=t->capacityMask; i+=2) {
+		Value *e = &t->entries[i-1];
+		markValue(vm, KEY(e));
+		markValue(vm, VALUE(e));
+	}
 }
 
 void tableRemoveWhite(ObjTable *t) {
-	for(size_t i=0; i<=t->capacityMask; i+=2) {
-		Value *e = &t->entries[i];
+	for(size_t i=1; i<=t->capacityMask; i+=2) {
+		Value *e = &t->entries[i-1];
 		if(!IS_NIL(*e) && isWhite(AS_OBJ(*e)))
 			tableDelete(t, KEY(e));
 	}

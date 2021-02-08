@@ -12,8 +12,6 @@
 #include "debug.h"
 #endif /* DEBUG_LOG_GC */
 
-void collectGarbage(VM *vm);
-
 Obj* allocateObject(size_t size, ObjType type, VM *vm) {
 	Obj *object = (Obj*)reallocate(vm, NULL, 0, size);
 	object->type = type;
@@ -26,26 +24,6 @@ Obj* allocateObject(size_t size, ObjType type, VM *vm) {
 	return object;
 }
 
-void* reallocate(VM *vm, void* previous, size_t oldSize, size_t newSize) {
-	vm->bytesAllocated += newSize - oldSize;
-
-	if(newSize > oldSize) {
-#ifdef DEBUG_STRESS_GC
-		collectGarbage(vm);
-#endif /* DEBUG_STRESS_GC */
-		if(vm->bytesAllocated > vm->nextGC) {
-			collectGarbage(vm);
-		}
-	}
-
-	if(newSize == 0) {
-		free(previous);
-		return NULL;
-	}
-
-	return realloc(previous, newSize);
-}
-
 static void markObject(VM *vm, Obj *o) {
 	if(o == NULL)
 		return;
@@ -53,7 +31,13 @@ static void markObject(VM *vm, Obj *o) {
 		return;
 #ifdef DEBUG_LOG_GC
 	printf("%p mark ", (void*)o);
-	printValue(OBJ_VAL(o));
+	if((o->type == OBJ_CLASS) && ((ObjClass*)o)->name == NULL) {
+		// During startup class->name might be NULL. No need to pollute
+		// printValue with a check, when it only matters if debugging the GC.
+		printf("<Class %s>", ((ObjClass*)o)->cname);
+	} else {
+		printValue(OBJ_VAL(o));
+	}
 	printf("\n");
 #endif /* DEBUG_LOG_GC */
 	o->isMarked = true;
@@ -82,6 +66,8 @@ static void markCompilerRoots(VM *vm) {
 		markObject(vm, (Obj*)c->chunk.constants);
 		markObject(vm, (Obj*)c->chunk.constantIndices);
 	}
+	for(ClassCompiler *c = vm->currentClassCompiler; c != NULL; c = c->enclosing)
+		markObject(vm, (Obj*)c->methods);
 }
 
 static void markRoots(VM *vm) {
@@ -91,7 +77,13 @@ static void markRoots(VM *vm) {
 	for(Value *slot = vm->stack; slot < vm->stackTop; slot++) {
 #ifdef DEBUG_LOG_GC
 		printf("stack[%ld] (%p) is ", slot - vm->stack, (void*)slot);
-		printValue(*slot);
+		if(IS_CLASS(*slot) && AS_CLASS(*slot)->name == NULL) {
+			// During startup class->name might be NULL. No need to pollute
+			// printValue with a check, when it only matters if debugging the GC.
+			printf("<Class %s>", (AS_CLASS(*slot))->cname);
+		} else {
+			printValue(*slot);
+		}
 		printf("\n");
 #endif
 		markValue(vm, *slot);
@@ -115,7 +107,13 @@ static void markRoots(VM *vm) {
 static void blackenObject(VM *vm, Obj *o) {
 #ifdef DEBUG_LOG_GC
 	printf("%p blacken ", (void*)o);
-	printValue(OBJ_VAL(o));
+	if((o->type == OBJ_CLASS) && ((ObjClass*)o)->name == NULL) {
+		// During startup class->name might be NULL. No need to pollute
+		// printValue with a check, when it only matters if debugging the GC.
+		printf("<Class %s>", ((ObjClass*)o)->cname);
+	} else {
+		printValue(OBJ_VAL(o));
+	}
 	printf("\n");
 #endif /* DEBUG_LOG_GC */
 	switch(o->type) {
@@ -311,4 +309,24 @@ void freeObjects(VM *vm) {
 		object = next;
 	}
 	free(vm->grayStack);
+}
+
+void* reallocate(VM *vm, void* previous, size_t oldSize, size_t newSize) {
+	vm->bytesAllocated += newSize - oldSize;
+
+	if(newSize > oldSize) {
+#ifdef DEBUG_STRESS_GC
+		collectGarbage(vm);
+#endif /* DEBUG_STRESS_GC */
+		if(vm->bytesAllocated > vm->nextGC) {
+			collectGarbage(vm);
+		}
+	}
+
+	if(newSize == 0) {
+		free(previous);
+		return NULL;
+	}
+
+	return realloc(previous, newSize);
 }

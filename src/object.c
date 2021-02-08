@@ -10,12 +10,12 @@
 
 ObjFunction *newFunction(VM *vm, size_t uvCount) {
 	ObjFunction *f = (ObjFunction*)allocateObject(sizeof(*f) + uvCount * sizeof(uint16_t), OBJ_FUNCTION, vm);
+	vm->frames[vm->frameCount-1].slots[0] = OBJ_VAL(f);
 
-	f->arity = 0;
+	f->minArity = 0;
 	f->uvCount = uvCount;
 	f->stackUsed = 0;
 	f->name = NULL;
-	fwdWriteBarrier(vm, OBJ_VAL(f));
 	initChunk(vm, &f->chunk);
 	return f;
 }

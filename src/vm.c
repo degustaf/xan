@@ -105,6 +105,7 @@ void initVM(VM *vm) {
 	vm->openUpvalues = NULL;
 	vm->objects = NULL;
 	vm->currentCompiler = NULL;
+	vm->currentClassCompiler = NULL;
 	vm->bytesAllocated = 0;
 	vm->nextGC = 1024 * 1024;
 	vm->grayCount = 0;
@@ -151,8 +152,8 @@ void freeVM(VM *vm) {
 }
 
 static bool call(VM *vm, ObjClosure *function, Value *base, Reg argCount, Reg retCount) {
-	if(argCount != function->f->arity) {	// TODO make variadic functions.
-		runtimeError(vm, "Expected %d arguments but got %d.", function->f->arity, argCount);
+	if(argCount != function->f->minArity) {	// TODO make variadic functions.
+		runtimeError(vm, "Expected %d arguments but got %d.", function->f->minArity, argCount);
 		return false;
 	}
 

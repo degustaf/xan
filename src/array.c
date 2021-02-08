@@ -46,6 +46,16 @@ static bool ArrayCount(VM *vm, int argCount, Value *args) {
 	return true;
 }
 
+static bool ArrayAppend(VM *vm, int argCount, Value *args) {
+	if(argCount != 1) {
+		ExceptionFormattedStr(vm, "Method 'append' of class 'array' expected 1 argument but got %d.", argCount);
+		return false;
+	}
+	assert(IS_ARRAY(args[-1]));
+	writeValueArray(vm, AS_ARRAY(args[-1]), args[0]);
+	return true;
+}
+
 void writeValueArray(VM *vm, ObjArray *array, Value value) {
 	if(array->capacity < array->count + 1) {
 		size_t oldCapacity = array->capacity;
@@ -59,6 +69,7 @@ void writeValueArray(VM *vm, ObjArray *array, Value value) {
 
 NativeDef arrayMethods[] = {
 	{"init", &ArrayInit},
+	{"append", &ArrayAppend},
 	{"count", &ArrayCount},
 	// {"__subscript", &ArrayInit},
 	{NULL, NULL}

@@ -1,0 +1,4 @@
+class Foo {
+  method() {}
+  method() {}	// Error at 'method': method with this name already declared in this scope.
+}

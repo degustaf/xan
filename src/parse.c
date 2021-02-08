@@ -9,12 +9,6 @@
 #include "debug.h"
 #include "table.h"
 
-typedef struct ClassCompiler {
-	struct ClassCompiler *enclosing;
-	Token name;
-	bool hasSuperClass;
-} ClassCompiler;
-
 typedef struct {
 	Token current;
 	Token previous;
@@ -822,7 +816,9 @@ static void initCompiler(Parser *p, Compiler *compiler, FunctionType type) {
 	p->vm->currentCompiler = compiler;
 	compiler->type = type;
 	compiler->scopeDepth = 0;
-	compiler->arity = 0;
+	compiler->minArity = 0;
+	compiler->maxArity = 0;
+	compiler->defaultArgs = NULL;
 	compiler->uvCount = 0;
 	compiler->name = NULL;
 	initChunk(p->vm, &compiler->chunk);
@@ -861,7 +857,7 @@ static ObjFunction *endCompiler(Parser *p) {
 		emitReturn(p, &e);
 	}
 	ObjFunction *f = newFunction(p->vm, p->currentCompiler->uvCount);
-	f->arity = p->currentCompiler->arity;
+	f->minArity = p->currentCompiler->minArity;
 	memcpy(&f->chunk, &p->currentCompiler->chunk, sizeof(Chunk));
 	f->name = p->currentCompiler->name;
 	f->stackUsed = p->currentCompiler->maxReg;
@@ -1605,35 +1601,60 @@ static void function(Parser *p, expressionDescription *e, FunctionType type) {
 	consume(p, TOKEN_LEFT_PAREN, "Expect '(' after function name.");
 	if(!check(p, TOKEN_RIGHT_PAREN)) {
 		do {
-			p->currentCompiler->arity++;
-			if(p->currentCompiler->arity > 255) {
+			c.minArity++;
+			if(c.minArity > 255)
 				errorAtCurrent(p, "Cannot have more than 255 parameters.");
-			}
 
 			expressionDescription v;
 			parseVariable(p, &v, "Expect parameter name.");
-			regReserve(p->currentCompiler, 1);
+			regReserve(&c, 1);
 			markInitialized(p);
 		} while(match(p, TOKEN_COMMA));
+		if(match(p, TOKEN_EQUAL)) {
+			c.maxArity = c.minArity;
+			c.minArity--;
+			// TODO
+
+			while(match(p, TOKEN_COMMA)) {
+				c.maxArity++;
+				if(c.maxArity > 255)
+					errorAtCurrent(p, "Cannot have more than 255 parameters.");
+	
+				expressionDescription v;
+				parseVariable(p, &v, "Expect parameter name.");
+				regReserve(&c, 1);
+				markInitialized(p);
+				if(match(p, TOKEN_EQUAL)) {
+				} else if(c.defaultArgs) {
+					errorAtCurrent(p, "non-default argument follows default argument.");
+				}
+			}
+		}
 	}
 	consume(p, TOKEN_RIGHT_PAREN, "Expect ')' after parameters.");
 
 	// Compile the body.
 	consume(p, TOKEN_LEFT_BRACE, "Expect '{' before function body.");
 	block(p);
-	endScope(p, localIsCaptured(p->currentCompiler));
+	endScope(p, localIsCaptured(&c));
 
 	ObjFunction *f = endCompiler(p);
-	exprInit(e, RELOC_EXTYPE, emit_AD(p, OP_CLOSURE, p->currentCompiler->actVar, makeConstant(p, OBJ_VAL(f))));
+	exprInit(e, RELOC_EXTYPE, emit_AD(p, OP_CLOSURE, c.actVar, makeConstant(p, OBJ_VAL(f))));
 }
 
-static void method(Parser *p, expressionDescription *klass) {
+static bool method(Parser *p, expressionDescription *klass) {
 	PRINT_FUNCTION;
 	assert(klass->type == NONRELOC_EXTYPE);
 	expressionDescription name, m;
 
 	consume(p, TOKEN_IDENTIFIER, "Expect method name.");
 	makeStringConstant(p, &name, p->previous.start, p->previous.length);
+	Value v;
+	if(tableGet(p->currentClass->methods, name.u.v, &v)) {
+		errorAtPrevious(p, "method with this name already declared in this scope.");
+		return true;
+	}
+	tableSet(p->vm, p->currentClass->methods, name.u.v, name.u.v);
 	printExpr(stderr, &name);
 	exprNextReg(p, &name);
 	if((p->previous.length == 4) && (strncmp(p->previous.start, "init", 4) == 0)) {
@@ -1645,6 +1666,7 @@ static void method(Parser *p, expressionDescription *klass) {
 	emit_ABC(p, OP_METHOD, klass->u.s.info, name.u.r.r, m.u.r.r);
 	exprFree(p->currentCompiler, &m);
 	exprFree(p->currentCompiler, &name);
+	return false;
 }
 
 static void classDeclaration(Parser *p) {
@@ -1656,7 +1678,9 @@ static void classDeclaration(Parser *p) {
 	classCompiler.name = p->previous;
 	classCompiler.enclosing = p->currentClass;
 	classCompiler.hasSuperClass = false;
-	p->currentClass = &classCompiler;
+	p->currentClass = p->vm->currentClassCompiler = &classCompiler;
+	classCompiler.methods = NULL;
+	classCompiler.methods = newTable(p->vm, 0);
 
 	printExpr(stderr, &name);
 	exprInit(&klass, RELOC_EXTYPE, emit_AD(p, OP_CLASS, 0, makeConstant(p, OBJ_VAL(copyString(classCompiler.name.start, classCompiler.name.length, p->vm)))));
@@ -1686,12 +1710,13 @@ static void classDeclaration(Parser *p) {
 
 	consume(p, TOKEN_LEFT_BRACE, "Expect '{' before class body.");
 	while(!check(p, TOKEN_RIGHT_BRACE) && !check(p, TOKEN_EOF))
-		method(p, &klass);
+		if(method(p, &klass)) return;
 	if(classCompiler.hasSuperClass)
 		endScope(p, localIsCaptured(p->currentCompiler));
 
 	consume(p, TOKEN_RIGHT_BRACE, "Expect '}' after class body.");
 	p->currentClass = classCompiler.enclosing;
+	p->vm->currentClassCompiler = classCompiler.enclosing;
 }
 
 static void returnStatement(Parser *p) {

@@ -101,7 +101,7 @@ typedef struct {
 
 typedef struct {
 	Obj obj;
-	int arity;
+	int minArity;
 	size_t uvCount;
 	Reg stackUsed;
 	Chunk chunk;
@@ -156,7 +156,9 @@ typedef struct Compiler {
 	Local locals[UINT8_COUNT];
 	uint16_t upvalues[UINT8_COUNT];
 	size_t uvCount;
-	int arity;
+	int minArity;
+	int maxArity;
+	ObjArray *defaultArgs;
 	int scopeDepth;
 	OP_position pendingJumpList;
 	OP_position pendingBreakList;
@@ -167,6 +169,13 @@ typedef struct Compiler {
 	Reg actVar;
 	Reg maxReg;
 } Compiler;
+
+typedef struct ClassCompiler {
+	struct ClassCompiler *enclosing;
+	Token name;
+	bool hasSuperClass;
+	ObjTable *methods;
+} ClassCompiler;
 
 struct sCallFrame {
 	ObjClosure *c;
@@ -199,6 +208,7 @@ struct sVM {
 	ObjUpvalue *openUpvalues;
 	Obj *objects;
 	Compiler *currentCompiler;
+	ClassCompiler *currentClassCompiler;
 	size_t bytesAllocated;
 	size_t nextGC;
 	size_t grayCount;
