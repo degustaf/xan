@@ -11,8 +11,8 @@ void initChunk(VM *vm, Chunk *chunk) {
 	chunk->lines = NULL;
 	chunk->constants = NULL;		// For GC
 	chunk->constantIndices = NULL;	// For GC
-	chunk->constants = newArray(vm, 0);
-	chunk->constantIndices = newTable(vm, 0);
+	chunk->constants = newArray(vm, 0, NULL);	// Slot is only needed to store the return value for the GC while resizing.
+	chunk->constantIndices = newTable(vm, 0, NULL);
 }
 
 void finalizeChunk(Chunk *chunk) {
@@ -24,8 +24,8 @@ size_t writeChunk(VM *vm, Chunk *chunk, uint32_t opcode, size_t line) {
 	if(chunk->capacity < count + 1) {
 		size_t oldCapacity = chunk->capacity;
 		chunk->capacity = GROW_CAPACITY(oldCapacity);
-		chunk->code = GROW_ARRAY(chunk->code, uint32_t, oldCapacity, chunk->capacity);
-		chunk->lines = GROW_ARRAY(chunk->lines, size_t, oldCapacity, chunk->capacity);
+		chunk->code = GROW_ARRAY(vm, chunk->code, uint32_t, oldCapacity, chunk->capacity);
+		chunk->lines = GROW_ARRAY(vm, chunk->lines, size_t, oldCapacity, chunk->capacity);
 	}
 
 	chunk->code[count] = opcode;
@@ -42,7 +42,6 @@ size_t addConstant(VM *vm, Chunk *chunk, Value value) {
 			return (size_t)AS_NUMBER(ret);
 		tableSet(vm, chunk->constantIndices, value, NUMBER_VAL(chunk->constants->count));
 	}
-	fwdWriteBarrier(vm, value);
 	writeValueArray(vm, chunk->constants, value);
 	return chunk->constants->count - 1;
 }

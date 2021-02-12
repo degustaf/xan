@@ -55,13 +55,13 @@ static inline bool HAS_PROPERTIES(Value value) {
 #define NUMBER_VAL(value) ((Value){ VAL_NUMBER, { .number = value } })
 #define OBJ_VAL(object)   ((Value){ VAL_OBJ, { .obj = (Obj*)object } })
 
-ObjArray *newArray(VM *vm, size_t count);
+ObjArray *newArray(VM *vm, size_t count, Value *slot);
 ObjBoundMethod *newBoundMethod(VM *vm, Value receiver, Value method);
-ObjClass *newClass(VM *vm, ObjString *name);
+ObjClass *newClass(VM *vm, ObjString *name, Value *slot);
 ObjClosure *newClosure(VM *vm, ObjFunction *f);
 ObjFunction *newFunction(VM *vm, size_t uvCount, size_t varArityCount);
-ObjInstance *newInstance(VM *vm, ObjClass *klass);
-ObjModule * newModule(VM *vm, ObjString *name);
+ObjInstance *newInstance(VM *vm, ObjClass *klass, Value *slot);
+ObjModule * newModule(VM *vm, ObjString *name, Value *slot);
 ObjNative *newNative(VM *vm, NativeFn function);
 
 ObjUpvalue *newUpvalue(VM *vm, Value *slot);
@@ -69,11 +69,11 @@ ObjClass *copyClass(VM *vm, ObjClass *klass);
 void defineNative(VM *vm, ObjTable *t, Value *slots, const NativeDef *f);
 void defineNativeClass(VM *vm, ObjTable *t, Value *slots, ObjClass *def);
 ObjModule *defineNativeModule(VM *vm, Value *slots, ModuleDef *def);
-ObjArray *duplicateArray(VM *vm, ObjArray *source);
-void setArray(VM *vm, ObjArray *array, int idx, Value v);
+ObjArray *duplicateArray(VM *vm, ObjArray *source, Value *slot);
+void setArray(VM *vm, ObjArray *array, int idx, Value v);	// It is the caller's responsability to ensure that v is findable by the GC.
 bool getArray(ObjArray *array, int idx, Value *ret);
-ObjString *takeString(char *chars, size_t length, VM *vm);
-ObjString *copyString(const char *chars, size_t length, VM *vm);
+ObjString *takeString(char *chars, size_t length, VM *vm, Value *slot);
+ObjString *copyString(const char *chars, size_t length, VM *vm, Value *slot);
 void fprintObject(FILE *restrict stream, Value value);
 void printObject(Value value);
 

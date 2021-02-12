@@ -9,7 +9,6 @@ fun Pfannkuchen(n) {
 	var r = n;
 
 	for(var permCount = 0; true; permCount = permCount + 1) {
-		// print("permCount = "); print(permCount);	//debug
 		for(;r > 1; r = r - 1)
 			count[r-1] = r;
 		var perm = Array(n);
@@ -20,21 +19,12 @@ fun Pfannkuchen(n) {
 		var k;
 
 		while((k=perm[0]) != 0) {
-			// print("k, permCount = "); print(k); print(permCount);	//debug
-			// for(var i=0; i<n; i = i + 1) {
-			// 	print("perm[i] = "); print(perm[i]);
-			// }
 			var k2 = (k+1)/2;
 			k2 = k2 - (k2 % 1);
-			// print("k2 = "); print(k2);	//debug
 			for(var i=0; i<k2; i = i + 1) {
-				// print("i = "); print(i);	//debug
 				var temp = perm[i];
 				perm[i] = perm[k-i];
 				perm[k-i] = temp;
-				// print("perm[i] = "); print(perm[i]);	// debug
-				// print("perm[k-i] = "); print(perm[k-i]);	// debug
-				// return;
 			}
 			flipsCount = flipsCount + 1;
 		}
@@ -48,7 +38,6 @@ fun Pfannkuchen(n) {
 		}
 
 		for(;true; r = r + 1) {
-			// print("r = "); print(r);	//debug
 			if(r == n) {
 				print(checkSum);
 				return maxFlipsCount;
@@ -62,7 +51,6 @@ fun Pfannkuchen(n) {
 			count[r] = count[r] - 1;
 			if(count[r] > 0)
 				break;
-			r++;
 		}
 	}
 }

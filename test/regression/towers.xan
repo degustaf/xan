@@ -1,0 +1,53 @@
+class TowerDisk {
+	init(size) {
+		this.size = size;
+		this.next = nil;
+	}
+}
+
+class Towers {
+	pushDisk(disk, pile) {
+		var top = this.piles[pile];
+
+		disk.next = top;
+		this.piles[pile] = disk;
+	}
+
+	popDisk(pile) {
+		var top = this.piles[pile];
+		this.piles[pile] = top.next;
+		top.next = nil;
+		return top;
+	}
+
+	init(towers, disks) {
+		this.piles = Array(towers);
+		this.disks = disks;
+		for(var i = disks; i>= 0; i = i - 1)
+			this.pushDisk(TowerDisk(i), 0);
+	}
+
+	moveOneDisk(from, to) {
+		this.pushDisk(this.popDisk(from), to);
+	}
+
+	moveDisks(disks, from, to) {
+		if(disks == 1) {
+			this.moveOneDisk(from, to);
+			return 1;
+		} else {
+			var other = 3 - from - to;
+			var moves = this.moveDisks(disks - 1, from, other);
+			this.moveOneDisk(from, to);
+			return moves + 1 + this.moveDisks(disks - 1, other, to);
+		}
+	}
+
+	play() {
+		return this.moveDisks(this.disks, 0, 1);
+	}
+}
+
+for(var i=0; i<1; i = i+1) {
+	print(Towers(3, 13).play());	// expect: 8191
+}

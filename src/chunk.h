@@ -132,6 +132,6 @@ static inline void setbc_d(uint32_t *p, uint16_t x) {
 void initChunk(VM *vm, Chunk *chunk);
 void finalizeChunk(Chunk *chunk);
 size_t writeChunk(VM *vm, Chunk *chunk, uint32_t opcode, size_t line);
-size_t addConstant(VM *vm, Chunk *chunk, Value value);
+size_t addConstant(VM *vm, Chunk *chunk, Value value);	// Caller is responsible to ensure that value is findable by the GC.
 
 #endif /* XAN_CHUNK_H */

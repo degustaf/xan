@@ -4,6 +4,7 @@
 #include <time.h>
 
 #include "array.h"
+#include "class.h"
 #include "exception.h"
 #include "object.h"
 #include "table.h"
@@ -39,6 +40,7 @@ static bool sqrtNative(VM *vm, int argCount, Value *args) {
 }
 
 ObjClass *BuiltinClasses[] = {
+	&classDef,
 	&arrayDef,
 	&exceptionDef,
 	&stringDef,

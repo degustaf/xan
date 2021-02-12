@@ -3,6 +3,8 @@
 #include <assert.h>
 #include <string.h>
 
+#include "class.h"
+#include "exception.h"
 #include "memory.h"
 #include "object.h"
 
@@ -39,7 +41,7 @@ static uint32_t hash(Value v) {
 bool TableInit (VM *vm, int argCount, Value *args) {
 	assert((argCount & 1) == 0);
 
-	ObjTable *t = newTable(vm, argCount);
+	ObjTable *t = newTable(vm, argCount, &args[-1]);
 	args[-1] = OBJ_VAL(t);
 
 	for(int i = 0; i<argCount; i+=2) {
@@ -91,7 +93,7 @@ bool tableGet(ObjTable *t, Value key, Value *value) {
 }
 
 static void adjustCapacity(VM *vm, ObjTable *t, size_t capacityMask) {
-	Value *entries = ALLOCATE(Value, capacityMask + 1);
+	Value *entries = ALLOCATE(vm, Value, capacityMask + 1);
 	for(size_t i=0; i<=capacityMask; i++)
 		entries[i] = NIL_VAL;
 
@@ -106,13 +108,14 @@ static void adjustCapacity(VM *vm, ObjTable *t, size_t capacityMask) {
 		t->count++;
 	}
 
-	FREE_ARRAY(Value, t->entries, t->capacityMask + 1);
+	if(t->capacityMask)
+		FREE_ARRAY(&vm->gc, Value, t->entries, t->capacityMask + 1);
 	t->entries = entries;
 	t->capacityMask = capacityMask;
 }
 
-ObjTable *newTable(VM *vm, size_t count) {
-	ObjTable *t = ALLOCATE_OBJ(ObjTable, OBJ_TABLE);
+ObjTable *newTable(VM *vm, size_t count, Value *slot) {
+	ObjTable *t = ALLOCATE_OBJ(vm, ObjTable, OBJ_TABLE);
 	t->count = 0;
 	t->capacityMask = 0;
 	t->entries = NULL;
@@ -120,11 +123,26 @@ ObjTable *newTable(VM *vm, size_t count) {
 	t->fields = NULL;
 	if(count) {
 		size_t capacityMask = round_up_pow_2(2 * count) - 1;
-		fwdWriteBarrier(vm, OBJ_VAL(t));
+		assert(slot);
+		*slot = OBJ_VAL(t);
 		adjustCapacity(vm, t, capacityMask);
 	}
 
 	return t;
+}
+
+static bool TableNew(VM *vm, int argCount, Value *args) {
+	if(argCount > 1) {
+		ExceptionFormattedStr(vm, "Method 'new' of class 'table' expected 1 argument but got %d.", argCount);
+		return false;
+	}
+	if(!IS_NUMBER(args[0])) {
+		ExceptionFormattedStr(vm, "Method 'new' of class 'table' expects it's first argument to be a number.");
+		return false;
+	}
+
+	args[-1] = OBJ_VAL(newTable(vm, (size_t)(AS_NUMBER(args[0])), &args[-1]));
+	return true;
 }
 
 bool tableSet(VM *vm, ObjTable *t, Value key, Value value) {
@@ -140,7 +158,8 @@ bool tableSet(VM *vm, ObjTable *t, Value key, Value value) {
 	if(isNewKey && IS_NIL(VALUE(e)))
 		t->count++;
 
-	*e = key;
+	writeBarrier(vm, t);
+	KEY(e) = key;
 	VALUE(e) = value;
 	return isNewKey;
 }
@@ -214,8 +233,8 @@ void fprintTable(FILE *restrict stream, ObjTable *t) {
 	fprintf(stream, "}");
 }
 
-ObjTable *duplicateTable(VM *vm, ObjTable *source) {
-	ObjTable *dest = newTable(vm, (source->capacityMask+1)/2);
+ObjTable *duplicateTable(VM *vm, ObjTable *source, Value *slot) {
+	ObjTable *dest = newTable(vm, (source->capacityMask+1)/2, slot);
 	tableAddAll(vm, source, dest);
 	return dest;
 }
@@ -224,11 +243,11 @@ size_t count(ObjTable *t) {
 	return t->count;
 }
 
-void markTable(VM *vm, ObjTable *t) {
+void markTable(GarbageCollector *gc, ObjTable *t) {
 	for(size_t i=1; i<=t->capacityMask; i+=2) {
 		Value *e = &t->entries[i-1];
-		markValue(vm, KEY(e));
-		markValue(vm, VALUE(e));
+		markValue(gc, KEY(e));
+		markValue(gc, VALUE(e));
 	}
 }
 
@@ -240,13 +259,15 @@ void tableRemoveWhite(ObjTable *t) {
 	}
 }
 
-void freeTable(VM *vm, ObjTable *t) {
-	FREE_ARRAY(Value, t->entries, t->capacityMask+1);
-	FREE(ObjTable, t);
+void freeTable(GarbageCollector *gc, ObjTable *t) {
+	if(t->capacityMask)
+		FREE_ARRAY(gc, Value, t->entries, t->capacityMask+1);
+	FREE(gc, ObjTable, t);
 }
 
 NativeDef tableMethods[] = {
 	{"init", &TableInit},
+	{"new", &TableNew},
 	{NULL, NULL}
 };
 
@@ -254,7 +275,6 @@ ObjClass tableDef = {
 	CLASS_HEADER,
 	"Table",
 	tableMethods,
-	NULL,
-	NULL,
+	RUNTIME_CLASSDEF_FIELDS,
 	false
 };

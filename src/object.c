@@ -23,7 +23,7 @@ ObjFunction *newFunction(VM *vm, size_t uvCount, size_t varArityCount) {
 }
 
 ObjUpvalue *newUpvalue(VM *vm, Value *slot) {
-	ObjUpvalue *uv = ALLOCATE_OBJ(ObjUpvalue, OBJ_UPVALUE);
+	ObjUpvalue *uv = ALLOCATE_OBJ(vm, ObjUpvalue, OBJ_UPVALUE);
 	uv->location = slot;
 	uv->closed = NIL_VAL;
 	uv->next = NULL;
@@ -31,10 +31,10 @@ ObjUpvalue *newUpvalue(VM *vm, Value *slot) {
 }
 
 ObjClosure *newClosure(VM *vm, ObjFunction *f) {
-	ObjUpvalue **uvs = ALLOCATE(ObjUpvalue*, f->uvCount);
+	ObjUpvalue **uvs = ALLOCATE(vm, ObjUpvalue*, f->uvCount);
 	for(size_t i=0; i<f->uvCount; i++)
 		uvs[i] = NULL;
-	ObjClosure *cl = ALLOCATE_OBJ(ObjClosure, OBJ_CLOSURE);
+	ObjClosure *cl = ALLOCATE_OBJ(vm, ObjClosure, OBJ_CLOSURE);
 	cl->f = f;
 	cl->upvalues = uvs;
 	cl->uvCount = f->uvCount;
@@ -42,7 +42,7 @@ ObjClosure *newClosure(VM *vm, ObjFunction *f) {
 }
 
 ObjBoundMethod *newBoundMethod(VM *vm, Value receiver, Value method) {
-	ObjBoundMethod *ret = ALLOCATE_OBJ(ObjBoundMethod, OBJ_BOUND_METHOD);
+	ObjBoundMethod *ret = ALLOCATE_OBJ(vm, ObjBoundMethod, OBJ_BOUND_METHOD);
 	ret->receiver = receiver;
 	assert(IS_OBJ(method));
 	assert(isObjType(method, OBJ_CLOSURE) || isObjType(method, OBJ_NATIVE));
@@ -50,19 +50,21 @@ ObjBoundMethod *newBoundMethod(VM *vm, Value receiver, Value method) {
 	return ret;
 }
 
-ObjClass *newClass(VM *vm, ObjString *name) {
-	ObjClass *klass = ALLOCATE_OBJ(ObjClass, OBJ_CLASS);
+ObjClass *newClass(VM *vm, ObjString *name, Value *slot) {
+	// name and slot could alias.
+	ObjClass *klass = ALLOCATE_OBJ(vm, ObjClass, OBJ_CLASS);
 	klass->name = name;
 	klass->methods = NULL;
 	klass->cname = NULL;
 	klass->methodsArray = NULL;
-	fwdWriteBarrier(vm, OBJ_VAL(klass));
-	klass->methods = newTable(vm, 0);
+	*slot = OBJ_VAL(klass);	// name is still reachable through klass.
+	klass->methods = newTable(vm, 0, NULL);
+	writeBarrier(vm, klass);
 	return klass;
 }
 
 void defineNative(VM *vm, ObjTable *t, Value *slots, const NativeDef *f) {
-	slots[0] = OBJ_VAL(copyString(f->name, strlen(f->name), vm));
+	slots[0] = OBJ_VAL(copyString(f->name, strlen(f->name), vm, slots));
 	slots[1] = OBJ_VAL(newNative(vm, f->method));
 	assert(IS_STRING(slots[0]));
 	tableSet(vm, t, slots[0], slots[1]);
@@ -72,32 +74,39 @@ void defineNativeClass(VM *vm, ObjTable *t, Value *slots, ObjClass *klass) {
 	assert(vm->frameCount + 1 < vm->frameSize);
 	// This prevents a reallocation of vm->frames when incFrame is called.
 
-	klass->name = copyString(klass->cname, strlen(klass->cname), vm);
+	klass->name = copyString(klass->cname, strlen(klass->cname), vm, slots);
+	writeBarrier(vm, klass);
 
 	// klass is statically allocated, so it avoids newClass. This puts it in the linked list of objects for the garbage collector.
-	klass->obj.next = vm->objects;
-	vm->objects = (Obj*)klass;
+	// TODO This shouldn't be needed. but we'll get it working before trying to remove.
+	klass->obj.next = vm->gc.objects;
+	vm->gc.objects = (Obj*)klass;
 
 	slots[0] = OBJ_VAL(klass);
 
 	Value *slots2 =  incFrame(vm, 2, &slots[1], NULL);
 	slots = NULL;	// incFrame could invalidate slots. This prevents us from using it later.
-	klass->methods = newTable(vm, 0);
+	klass->methods = newTable(vm, 0, NULL);
+	writeBarrier(vm, klass);
 	assert(klass->methods);
-	for(size_t i = 0; klass->methodsArray[i].name; i++)
+	for(size_t i = 0; klass->methodsArray[i].name; i++) {
 		defineNative(vm, klass->methods, slots2, &klass->methodsArray[i]);
+		if(AS_STRING(slots2[0]) == vm->newString)
+			klass->newFn = AS_OBJ(slots2[1]);
+	}
 	decFrame(vm);
 
 	tableSet(vm, t, OBJ_VAL(klass->name), OBJ_VAL(klass));
 }
 
-ObjModule * newModule(VM *vm, ObjString *name) {
+ObjModule * newModule(VM *vm, ObjString *name, Value *v) {
 	// It is the callers responsability to ensure that name is findable by the GC.
-	ObjModule *module = ALLOCATE_OBJ(ObjModule, OBJ_MODULE);
+	ObjModule *module = ALLOCATE_OBJ(vm, ObjModule, OBJ_MODULE);
 	module->name = name;
 	module->items = NULL;
-	fwdWriteBarrier(vm, OBJ_VAL(module));
-	module->items = newTable(vm, 0);
+	*v = OBJ_VAL(module);
+	module->items = newTable(vm, 0, NULL);
+	writeBarrier(vm, module);
 	return module;
 }
 
@@ -105,8 +114,8 @@ ObjModule *defineNativeModule(VM *vm, Value *slots, ModuleDef *def) {
 	assert(vm->frameCount + 2 < vm->frameSize);
 	// This prevents a reallocation of vm->frames when incFrame is called, or when defineNativeClass is called.
 
-	slots[0] = OBJ_VAL(copyString(def->name, strlen(def->name), vm));
-	ObjModule *ret = newModule(vm, AS_STRING(slots[0]));
+	slots[0] = OBJ_VAL(copyString(def->name, strlen(def->name), vm, slots));
+	ObjModule *ret = newModule(vm, AS_STRING(slots[0]), &slots[1]);
 	slots[0] = OBJ_VAL(ret);		// For GC.
 
 	Value *slots2 = incFrame(vm, 1, &slots[1], NULL);
@@ -121,34 +130,35 @@ ObjModule *defineNativeModule(VM *vm, Value *slots, ModuleDef *def) {
 	return ret;
 }
 
-ObjInstance *newInstance(VM *vm, ObjClass *klass) {
-	ObjInstance *o = ALLOCATE_OBJ(ObjInstance, OBJ_INSTANCE);
+ObjInstance *newInstance(VM *vm, ObjClass *klass, Value *slot) {
+	ObjInstance *o = ALLOCATE_OBJ(vm, ObjInstance, OBJ_INSTANCE);
 	o->klass = klass;
 	o->fields = NULL;
-	fwdWriteBarrier(vm, OBJ_VAL(o));
-	o->fields = newTable(vm, 0);
+	*slot = OBJ_VAL(o);
+	o->fields = newTable(vm, 0, NULL);
+	writeBarrier(vm, o);
 	return o;
 }
 
 ObjNative *newNative(VM *vm, NativeFn function) {
-	ObjNative *native = ALLOCATE_OBJ(ObjNative, OBJ_NATIVE);
+	ObjNative *native = ALLOCATE_OBJ(vm, ObjNative, OBJ_NATIVE);
 	native->function = function;
 	return native;
 }
 
-ObjArray *duplicateArray(VM *vm, ObjArray *source) {
-	ObjArray *dest = newArray(vm, source->count);
+ObjArray *duplicateArray(VM *vm, ObjArray *source, Value *slot) {
+	ObjArray *dest = newArray(vm, source->count, slot);
 	for(size_t i=0; i<source->count; i++)
 		dest->values[i] = source->values[i];
 	return dest;
 }
 
 void setArray(VM *vm, ObjArray *array, int idx, Value v) {
+	// The caller is required to ensure that v is findable by the GC.
 	assert(idx >= 0);
 	if((size_t)idx >= array->capacity) {
 		size_t capacity = GROW_CAPACITY(round_up_pow_2(idx));
-		fwdWriteBarrier(vm, v);
-		array->values = GROW_ARRAY(array->values, Value, array->capacity, capacity);
+		array->values = GROW_ARRAY(vm, array->values, Value, array->capacity, capacity);
 		array->capacity = capacity;
 	}
 

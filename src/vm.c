@@ -26,14 +26,14 @@ static bool isFalsey(Value v) {
 					 || (IS_TABLE(v) && count(AS_TABLE(v)) == 0);
 }
 
-static Value concatenate(VM *vm, ObjString *b, ObjString *c) {
+static Value concatenate(VM *vm, ObjString *b, ObjString *c, Value *slot) {
 	size_t length = b->length + c->length;
-	char *chars = ALLOCATE(char, length+1);
+	char *chars = ALLOCATE(vm, char, length+1);
 	memcpy(chars, b->chars, b->length);
 	memcpy(chars + b->length, c->chars, c->length);
 	chars[length] = '\0';
 
-	ObjString *result = takeString(chars, length, vm);
+	ObjString *result = takeString(chars, length, vm, slot);
 	return OBJ_VAL(result);
 }
 
@@ -49,7 +49,7 @@ static void growStack(VM *vm, size_t space_needed) {
 	size_t oldStackSize = vm->stackSize;
 	while(vm->stackSize < space_needed)
 		vm->stackSize = GROW_CAPACITY(vm->stackSize);
-	vm->stack = GROW_ARRAY(vm->stack, Value, oldStackSize, vm->stackSize);
+	vm->stack = GROW_ARRAY(vm, vm->stack, Value, oldStackSize, vm->stackSize);
 	vm->stackTop = vm->stack + stackTopIndex;
 	vm->stackLast = vm->stack + vm->stackSize - 1;
 	for(size_t i = 0; i < vm->frameCount; i++)
@@ -60,7 +60,7 @@ Value *incFrame(VM *vm, Reg stackUsed, Value *base, ObjClosure *function) {
 	if(vm->frameCount == vm->frameSize) {
 		size_t oldFrameSize = vm->frameSize;
 		vm->frameSize = GROW_CAPACITY(vm->frameSize);
-		vm->frames = GROW_ARRAY(vm->frames, CallFrame, oldFrameSize, vm->frameSize);
+		vm->frames = GROW_ARRAY(vm, vm->frames, CallFrame, oldFrameSize, vm->frameSize);
 		// This will invalidate the value of frame in run.
 		if(vm->frames == NULL) {
 			runtimeError(vm, "Stack overflow.");
@@ -102,19 +102,24 @@ void initVM(VM *vm) {
 	vm->strings = NULL;
 	vm->globals = NULL;
 	vm->initString = NULL;
+	vm->newString = NULL;
 	vm->openUpvalues = NULL;
-	vm->objects = NULL;
 	vm->currentCompiler = NULL;
 	vm->currentClassCompiler = NULL;
-	vm->bytesAllocated = 0;
-	vm->nextGC = 1024 * 1024;
-	vm->grayCount = 0;
-	vm->grayCapacity = 0;
-	vm->grayStack = NULL;
+
+	GarbageCollector *gc = &vm->gc;
+	gc->objects = NULL;
+	gc->grayStack = NULL;
+	gc->bytesAllocated = 0;
+	gc->nextMinorGC = 256 * 1024;
+	gc->nextMajorGC = 1024 * 1024;
+	gc->grayCount = 0;
+	gc->grayCapacity = 0;
+	gc->nextGCisMajor = false;
 
 	// Now we can call the allocator.
 	vm->frameSize = FRAMES_MAX;
-	vm->frames = GROW_ARRAY(NULL, CallFrame, 0, vm->frameSize);
+	vm->frames = GROW_ARRAY(vm, NULL, CallFrame, 0, vm->frameSize);
 	vm->frameCount = 0;
 	for(size_t i=0; i<vm->frameSize; i++) {
 		CallFrame *fr = vm->frames + i;
@@ -124,17 +129,18 @@ void initVM(VM *vm) {
 	}
 
 	vm->stackSize = BASE_STACK_SIZE;
-	vm->stack = GROW_ARRAY(NULL, Value, 0, vm->stackSize);
+	vm->stack = GROW_ARRAY(vm, NULL, Value, 0, vm->stackSize);
 	vm->stackLast = vm->stack + vm->stackSize - 1;
 	for(size_t i = 0; i <vm->stackSize; i++)
 		vm->stack[i] = NIL_VAL;
 	vm->stackTop = vm->stack;
 
-	vm->strings = newTable(vm, 0);
-	vm->globals = newTable(vm, 0);
-	vm->initString = copyString("init", 4, vm);
 
 	Value *slots = incFrame(vm, 2, &vm->stack[1], NULL);
+	vm->strings = newTable(vm, 0, slots);
+	vm->globals = newTable(vm, 0, slots);
+	vm->initString = copyString("init", 4, vm, slots);
+	vm->newString = copyString("new", 3, vm, slots);
 	assert(slots);	// If we're out of memory now, we have no chance and might as well bail.
 	ObjModule *builtinM = defineNativeModule(vm, slots, &builtinDef);
 	vm->globals = builtinM->items;
@@ -142,16 +148,18 @@ void initVM(VM *vm) {
 }
 
 void freeVM(VM *vm) {
-	FREE_ARRAY(Value, vm->stack, vm->stackSize);
+	FREE_ARRAY(&vm->gc, Value, vm->stack, vm->stackSize);
+	FREE_ARRAY(&vm->gc, CallFrame, vm->frames, vm->frameSize);
 	vm->stackSize = 0;
 	vm->stackTop = vm->stackLast = NULL;
 	vm->strings = NULL;
 	vm->globals = NULL;
 	vm->initString = NULL;
-	freeObjects(vm);
+	vm->newString = NULL;
+	freeObjects(&vm->gc);
 }
 
-static bool call(VM *vm, ObjClosure *function, Value *base, Reg argCount, Reg retCount) {
+static bool call(VM *vm, ObjClosure *function, Value *base, Reg argCount, __attribute__((unused)) Reg retCount) {
 	if(argCount < function->f->minArity) {
 		runtimeError(vm, "Expected at least %d arguments but got %d.", function->f->minArity, argCount);
 		return false;
@@ -193,13 +201,13 @@ static bool callValue(VM *vm, Value *callee, Reg retCount, Reg argCount) {
 						goto native;
 					}
 					assert(IS_CLOSURE(initializer));
-					*callee = OBJ_VAL(newInstance(vm, klass));
+					*callee = OBJ_VAL(newInstance(vm, klass, callee));
 					return call(vm, AS_CLOSURE(initializer), callee, argCount, retCount);
 				} else if(argCount) {
 					runtimeError(vm, "Expected 0 arguments but got %d.", argCount);
 					return false;
 				}
-				*callee = OBJ_VAL(newInstance(vm, klass));
+				*callee = OBJ_VAL(newInstance(vm, klass, callee));
 				return true;
 			}
 			case OBJ_CLOSURE:
@@ -414,7 +422,7 @@ static InterpretResult run(VM *vm) {
 				Value b = frame->slots[RB(bytecode)];
 				Value c = frame->slots[RC(bytecode)];
 				if(IS_STRING(b) && IS_STRING(c)) {
-					frame->slots[RA(bytecode)] = concatenate(vm, AS_STRING(b), AS_STRING(c));
+					frame->slots[RA(bytecode)] = concatenate(vm, AS_STRING(b), AS_STRING(c), &frame->slots[RA(bytecode)]);
 				} else if(IS_NUMBER(b) && IS_NUMBER(c)) {
 					frame->slots[RA(bytecode)] = NUMBER_VAL(AS_NUMBER(b) + AS_NUMBER(c));
 				} else {
@@ -502,6 +510,7 @@ OP_JUMP:
 						cl->upvalues[i] = captureUpvalue(vm, frame->slots + (f->uv[i] & 0xff) - 1);
 					else
 						cl->upvalues[i] = frame->c->upvalues[(f->uv[i] & 0xff)-1];
+					writeBarrier(vm, cl);
 				}
 				DISPATCH;
 			}
@@ -509,7 +518,7 @@ OP_JUMP:
 				closeUpvalues(vm, frame->slots + RA(bytecode));
 				DISPATCH;
 			TARGET(OP_CLASS): {
-				ObjClass *klass = newClass(vm, AS_STRING(frame->c->f->chunk.constants->values[RD(bytecode)]));
+				ObjClass *klass = newClass(vm, AS_STRING(frame->c->f->chunk.constants->values[RD(bytecode)]), &frame->slots[RA(bytecode)]);
 				frame->slots[RA(bytecode)] = OBJ_VAL(klass);
 				DISPATCH;
 			}
@@ -579,18 +588,21 @@ OP_JUMP:
 				DISPATCH;
 			}
 			TARGET(OP_NEW_ARRAY):
-				frame->slots[RA(bytecode)] = OBJ_VAL(newArray(vm, RD(bytecode)));
+				frame->slots[RA(bytecode)] = OBJ_VAL(newArray(vm, RD(bytecode), &frame->slots[RA(bytecode)]));
 				DISPATCH;
 			TARGET(OP_DUPLICATE_ARRAY): {
-				ObjArray *t = duplicateArray(vm, AS_ARRAY(frame->c->f->chunk.constants->values[RD(bytecode)]));
-				frame->slots[RA(bytecode)] = OBJ_VAL(t);
+#ifndef NDEBUG
+				ObjArray *t =
+#endif
+					duplicateArray(vm, AS_ARRAY(frame->c->f->chunk.constants->values[RD(bytecode)]), &frame->slots[RA(bytecode)]);
+				assert(AS_ARRAY(frame->slots[RA(bytecode)]) == t);
 				DISPATCH;
 			}
 			TARGET(OP_NEW_TABLE):
-				frame->slots[RA(bytecode)] = OBJ_VAL(newTable(vm, RD(bytecode)));
+				frame->slots[RA(bytecode)] = OBJ_VAL(newTable(vm, RD(bytecode), &frame->slots[RA(bytecode)]));
 				DISPATCH;
 			TARGET(OP_DUPLICATE_TABLE): {
-				ObjTable *t = duplicateTable(vm, AS_TABLE(frame->c->f->chunk.constants->values[RD(bytecode)]));
+				ObjTable *t = duplicateTable(vm, AS_TABLE(frame->c->f->chunk.constants->values[RD(bytecode)]), &frame->slots[RA(bytecode)]);
 				frame->slots[RA(bytecode)] = OBJ_VAL(t);
 				DISPATCH;
 			}
@@ -635,7 +647,7 @@ OP_JUMP:
 						runtimeError(vm, "Subscript out of range.");
 						goto exception_unwind;
 					}
-					frame->slots[RA(bytecode)] = OBJ_VAL(copyString(s->chars + i, 1, vm));
+					frame->slots[RA(bytecode)] = OBJ_VAL(copyString(s->chars + i, 1, vm, &frame->slots[RA(bytecode)]));
 				} else {
 					runtimeError(vm, "Only arrays, tables, and strings can be subscripted.");
 					goto exception_unwind;
@@ -735,8 +747,8 @@ exception_unwind: {
 #undef SWITCH
 
 InterpretResult interpret(VM *vm, const char *source, bool printCode) {
-	incFrame(vm, 2, &vm->stack[1], NULL);
-	// The parser needs 2 stack slots to stash values to prevent premature freeing.
+	incFrame(vm, 3, &vm->stack[1], NULL);
+	// The parser needs 3 stack slots to stash values to prevent premature freeing.
 	ObjFunction *script = parse(vm, source, printCode);
 	decFrame(vm);
 #ifndef DEBUG_PRINT_CODE

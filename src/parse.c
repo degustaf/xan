@@ -311,7 +311,7 @@ static inline void exprInit(expressionDescription *e, expressionType type, uint1
 
 static void regFree(Compiler *c, int16_t r) {
 	PRINT_FUNCTION;
-	if(r == 255) return;
+	if((r == -1) || (r == 255)) return;
 	assert(c->nextReg != 0);
 	if(r >= c->actVar) {
 		c->nextReg--;
@@ -393,6 +393,7 @@ static void regReserve(Compiler *c, int n) {
 }
 
 static uint16_t makeConstant(Parser *p, Value v) {
+	p->vm->frames[p->vm->frameCount-1].slots[0] = v;
 	size_t constant = addConstant(p->vm, currentChunk(p->currentCompiler), v);
 	if(constant > UINT16_MAX) {
 		errorAtPrevious(p, "Too many constants in one chunk.");
@@ -823,7 +824,7 @@ static void initCompiler(Parser *p, Compiler *compiler, FunctionType type) {
 	compiler->name = NULL;
 	initChunk(p->vm, &compiler->chunk);
 	if(type != TYPE_SCRIPT)
-		compiler->name = copyString(p->previous.start, p->previous.length, p->vm);
+		compiler->name = copyString(p->previous.start, p->previous.length, p->vm, p->vm->frames[p->vm->frameCount-1].slots);
 	compiler->pendingJumpList = NO_JUMP;
 	compiler->pendingContinueList = NO_JUMP;
 	compiler->last_target = NO_JUMP;
@@ -1075,12 +1076,14 @@ static void array(Parser *p, expressionDescription *e) {
 
 			if(ExprIsConstantHasNoJump(&val)) {
 				if(array == NULL) {
-					array = newArray(p->vm, count + 1);
+					array = newArray(p->vm, count + 1, p->vm->frames[p->vm->frameCount-1].slots);
 					uint16_t constIdx = makeConstant(p, OBJ_VAL(array));
 					currentChunk(p->currentCompiler)->code[ins_location] =
 						OP_AD(OP_DUPLICATE_ARRAY, nextReg - 1, constIdx);
 				}
+				p->vm->frames[p->vm->frameCount-1].slots[0] = val.u.v;
 				setArray(p->vm, array, count, val.u.v);
+				writeBarrier(p->vm, array);
 			} else {
 				if(val.type != CALL_EXTYPE)
 					exprAnyReg(p, &val);
@@ -1093,7 +1096,6 @@ static void array(Parser *p, expressionDescription *e) {
 				exprInit(e, NONRELOC_EXTYPE, nextReg - 1);
 			}
 			count++;
-			// p->currentCompiler->nextReg = nextReg;
 		} while(match(p, TOKEN_COMMA));
 
 		consume(p, TOKEN_RIGHT_BRACKET, "Expect ']' after array literal.");
@@ -1119,7 +1121,7 @@ static void makeStringConstant(Parser *p, expressionDescription *e, const char *
 	e->u.r.r = 0;
 	e->u.s.info = 0;
 #endif /* DEBUG_EXPRESSION_DESCRIPTION */
-	e->u.v = OBJ_VAL(copyString(s, length, p->vm));
+	e->u.v = OBJ_VAL(copyString(s, length, p->vm, p->vm->frames[p->vm->frameCount-1].slots));
 	e->true_jump = e->false_jump = NO_JUMP;
 }
 
@@ -1149,24 +1151,28 @@ static void table(Parser *p, expressionDescription *e) {
 			if(key.type == STRING_EXTYPE)
 				p->vm->frames[p->vm->frameCount-1].slots[0] = key.u.v;
 
+			if(ExprIsConstant(&key) && (key.type != NIL_EXTYPE) && (key.type == STRING_EXTYPE || key.type == NUMBER_EXTYPE)) {
+				if(t == NULL) {
+					t = newTable(p->vm, count, &p->vm->frames[p->vm->frameCount-1].slots[1]);
+					uint16_t constIdx = makeConstant(p, OBJ_VAL(t));
+					currentChunk(p->currentCompiler)->code[ins_location] =
+						OP_AD(OP_DUPLICATE_TABLE, nextReg - 1, constIdx);
+				}
+				tableSet(p->vm, t, key.u.v, NIL_VAL);
+				writeBarrier(p->vm, t);
+			}
+
 			expression(p, &val);
 			if(val.type == STRING_EXTYPE)
 				p->vm->frames[p->vm->frameCount-1].slots[1] = val.u.v;
 
 			if(ExprIsConstant(&key) && (key.type != NIL_EXTYPE) &&
 					(key.type == STRING_EXTYPE || key.type == NUMBER_EXTYPE || ExprIsConstantHasNoJump(&val))) {
-				if(t == NULL) {
-					t = newTable(p->vm, count);
-					uint16_t constIdx = makeConstant(p, OBJ_VAL(t));
-					currentChunk(p->currentCompiler)->code[ins_location] =
-						OP_AD(OP_DUPLICATE_TABLE, nextReg - 1, constIdx);
-				}
 				assert(IS_STRING(key.u.v) || IS_NUMBER(key.u.v));
 				if(ExprIsConstantHasNoJump(&val)) {
 					expr_toval(p, &val);
 					tableSet(p->vm, t, key.u.v, val.u.v);
 				} else {
-					tableSet(p->vm, t, key.u.v, NIL_VAL);
 					goto nonConstant;
 				}
 			} else {
@@ -1208,7 +1214,6 @@ static void dot(Parser *p, expressionDescription *v) {
 	exprAnyReg(p, v);
 	makeStringConstant(p, &key, p->previous.start, p->previous.length);
 	if(match(p, TOKEN_LEFT_PAREN)) {
-		// expressionIndexed(p, INDEXED_EXTYPE, v, &key);
 		exprNextReg(p, v);
 		exprNextReg(p, &key);
 		argumentList(p, v, OP_INVOKE);
@@ -1300,7 +1305,7 @@ static int16_t var_lookup(Parser *p, Compiler *c, Token *name, expressionDescrip
 			}
 		}
 	} else {
-		exprInit(e, GLOBAL_EXTYPE, makeConstant(p, OBJ_VAL(copyString(name->start, name->length, p->vm))));
+		exprInit(e, GLOBAL_EXTYPE, makeConstant(p, OBJ_VAL(copyString(name->start, name->length, p->vm, p->vm->frames[p->vm->frameCount-1].slots))));
 	}
 	return -2;
 }
@@ -1472,7 +1477,7 @@ static void scopeVariable(Parser *p, expressionDescription *e, Token *name) {
 	PRINT_FUNCTION;
 	int r = declareVariable(p, name);
 	if(r < 0) {
-		exprInit(e, GLOBAL_EXTYPE, makeConstant(p, OBJ_VAL(copyString(name->start, name->length, p->vm))));
+		exprInit(e, GLOBAL_EXTYPE, makeConstant(p, OBJ_VAL(copyString(name->start, name->length, p->vm, p->vm->frames[p->vm->frameCount-1].slots))));
 	} else {
 		exprInit(e, LOCAL_EXTYPE, r);
 		e->assignable = true;
@@ -1688,10 +1693,10 @@ static void classDeclaration(Parser *p) {
 	classCompiler.hasSuperClass = false;
 	p->currentClass = p->vm->currentClassCompiler = &classCompiler;
 	classCompiler.methods = NULL;
-	classCompiler.methods = newTable(p->vm, 0);
+	classCompiler.methods = newTable(p->vm, 0, NULL);
 
 	printExpr(stderr, &name);
-	exprInit(&klass, RELOC_EXTYPE, emit_AD(p, OP_CLASS, 0, makeConstant(p, OBJ_VAL(copyString(classCompiler.name.start, classCompiler.name.length, p->vm)))));
+	exprInit(&klass, RELOC_EXTYPE, emit_AD(p, OP_CLASS, 0, makeConstant(p, OBJ_VAL(copyString(classCompiler.name.start, classCompiler.name.length, p->vm, p->vm->frames[p->vm->frameCount-1].slots)))));
 	exprAnyReg(p, &klass);
 	emitDefine(p, &name, &klass);
 	var_lookup(p, p->currentCompiler, &classCompiler.name, &klass, true);
@@ -2049,7 +2054,7 @@ ObjFunction *parse(VM *vm, const char *source, bool printCode) {
 	endScanner(p.s);
 
 	if(p.hadError) {
-		freeChunk(vm, &compiler.chunk);
+		freeChunk(&vm->gc, &compiler.chunk);
 		return NULL;
 	}
 

@@ -45,7 +45,8 @@ static const char* const ObjTypeNames[] = {
 
 struct sObj {
 	ObjType type;
-	bool isMarked;
+	bool isBlack;
+	bool isGrey;
 	struct sObj *next;
 };
 
@@ -193,7 +194,19 @@ struct try_frame {
 	Reg exception;
 };
 
+typedef struct {
+	Obj *objects;
+	Obj **grayStack;
+	size_t bytesAllocated;
+	size_t nextMinorGC;
+	size_t nextMajorGC;
+	size_t grayCount;
+	size_t grayCapacity;
+	bool nextGCisMajor;
+} GarbageCollector;
+
 struct sVM {
+	GarbageCollector gc;
 	CallFrame *frames;
 	struct try_frame _try[TRY_MAX];
 	size_t frameCount;
@@ -208,15 +221,10 @@ struct sVM {
 	ObjTable *strings;
 	ObjTable *globals;
 	ObjString *initString;
+	ObjString *newString;
 	ObjUpvalue *openUpvalues;
-	Obj *objects;
 	Compiler *currentCompiler;
 	ClassCompiler *currentClassCompiler;
-	size_t bytesAllocated;
-	size_t nextGC;
-	size_t grayCount;
-	size_t grayCapacity;
-	Obj** grayStack;
 };
 
 typedef bool (*NativeFn)(VM *vm, int argCount, Value *args);
@@ -232,15 +240,18 @@ typedef struct {
 } NativeDef;
 
 struct sObjClass {
-	Obj obj;
+	INSTANCE_FIELDS;
 	const char *cname;
 	NativeDef *methodsArray;
+	Obj *newFn;
 	ObjString *name;
 	ObjTable *methods;
 	bool isException;
 };
 
-#define CLASS_HEADER {OBJ_CLASS, false, NULL,}
+#define CLASS_HEADER {OBJ_CLASS, false, true, NULL,}, &classDef, NULL
+// These fields should be NULL for static class definitions, and are created by defineNativeClass.
+#define RUNTIME_CLASSDEF_FIELDS NULL, NULL, NULL
 
 typedef struct {
 	Obj obj;

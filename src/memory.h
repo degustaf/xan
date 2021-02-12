@@ -8,37 +8,38 @@
 #include "vm.h"
 
 #ifdef DEBUG_LOG_GC
-#define ALLOCATE(type, count) \
+#define ALLOCATE(vm, type, count) \
 	(type*)reallocate(vm, NULL, 0, sizeof(type) * (count)); \
 	printf("ALLOCATE %ld\n", sizeof(type) * (count))
 #else /* DEBUG_LOG_GC */
-#define ALLOCATE(type, count) \
+#define ALLOCATE(vm, type, count) \
 	(type*)reallocate(vm, NULL, 0, sizeof(type) * (count))
 #endif /* DEBUG_LOG_GC */
 
-#define ALLOCATE_OBJ(type, objectType) \
+#define ALLOCATE_OBJ(vm, type, objectType) \
 	(type*)allocateObject(sizeof(type), objectType, vm)
 
 #define GROW_CAPACITY(capacity) \
 	((capacity) < 8 ? 8 : (capacity) * 2)
 
 #ifdef DEBUG_LOG_GC
-#define GROW_ARRAY(previous, type, oldCount, count) \
+#define GROW_ARRAY(vm, previous, type, oldCount, count) \
 	reallocate(vm, previous, sizeof(type) * (oldCount), sizeof(type) * (count)); \
 	printf("GROW_ARRAY from %ld to %ld\n", sizeof(type) * (oldCount), sizeof(type) * (count))
 #else /* DEBUG_LOG_GC */
-#define GROW_ARRAY(previous, type, oldCount, count) \
+#define GROW_ARRAY(vm, previous, type, oldCount, count) \
 	reallocate(vm, previous, sizeof(type) * (oldCount), sizeof(type) * (count))
 #endif /* DEBUG_LOG_GC */
 
-#define FREE_ARRAY(type, pointer, oldCount) \
-	reallocate(vm, pointer, sizeof(type) * (oldCount), 0)
+#define FREE_ARRAY(gc, type, pointer, oldCount) \
+	_free(gc, pointer, sizeof(type) * (oldCount))
 
-#define FREE(type, pointer) \
-	reallocate(vm, pointer, sizeof(type), 0)
+#define FREE(gc, type, pointer) \
+	_free(gc, pointer, sizeof(type))
 
-#define isWhite(o) (!((Obj*)(o))->isMarked)
-#define fwdWriteBarrier(vm, v) markValue(vm, v)
+#define isWhite(o) (!((Obj*)(o))->isBlack)
+#define isGrey(o) (((Obj*)(o))->isGrey)
+#define writeBarrier(vm, o) if(!isGrey((o))) setGrey(&(vm)->gc, ((Obj*)(o)))
 
 static inline size_t round_up_pow_2(size_t n) {
 	n--;
@@ -50,8 +51,10 @@ static inline size_t round_up_pow_2(size_t n) {
 
 Obj* allocateObject(size_t size, ObjType type, VM *vm);
 void* reallocate(VM *vm, void* previous, size_t oldSize, size_t newSize);
-void markValue(VM *vm, Value v);
-void freeObjects(VM *vm);
-void freeChunk(VM *vm, Chunk *chunk);
+void _free(GarbageCollector *gc, void* previous, size_t oldSize);
+void markValue(GarbageCollector *gc, Value v);
+void freeObjects(GarbageCollector *gc);
+void freeChunk(GarbageCollector *gc, Chunk *chunk);
+void setGrey(GarbageCollector *gc, Obj *o);
 
 #endif /* XAN_MEMORY_H */
