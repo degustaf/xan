@@ -5,16 +5,19 @@ ifeq ($(OSTYPE),cygwin)
 	CLEANDIR=rm -rf
 	MKDIR=mkdir -p
 	TARGET_EXTENSION=
+	MATHLIB=-lm
 else ifeq ($(OS),Windows_NT)
 	CLEANUP=del /F /Q
 	CLEANDIR=rd /S /Q
 	MKDIR=mkdir
 	TARGET_EXTENSION=.exe
+	MATHLIB=
 else
 	CLEANUP=rm -f
 	CLEANDIR=rm -rf
 	MKDIR=mkdir -p
 	TARGET_EXTENSION=
+	MATHLIB=-lm
 endif
 
 PATHS = 			src
@@ -37,7 +40,7 @@ CFLAGS =			-I$(PATHS) -I$(PATHI) -Wall -Wextra -Werror $(ARCH) -std=$(C_STD) -D_
 CLIENT_CFLAGS = 	-I$(PATHI) -Wall -Wextra -Werror -pedantic $(ARCH) -std=$(C_STD) -D_POSIX_C_SOURCE=200809L $(DEF)
 
 LDFLAGS =			$(ARCH) $(DEF)
-LDLIBS =			-lm
+LDLIBS =			$(MATHLIB)
 
 COMPILE =			$(CC) $(CFLAGS) -MT $@ -MP -MMD -MF $(PATHD)/$*.Td
 OBJS =				$(addprefix $(PATHLB)/, $(notdir $(SRCS:.c=.o)))
