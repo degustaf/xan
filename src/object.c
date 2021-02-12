@@ -256,6 +256,7 @@ void printObject(Value value) {
 	fprintObject(stdout, value);
 }
 
+#ifndef TAGGED_NAN
 bool valuesEqual(Value a, Value b) {
 	if(a.type != b.type) return false;
 
@@ -267,21 +268,18 @@ bool valuesEqual(Value a, Value b) {
 	}
 	return false;
 }
+#endif /* TAGGED_NAN */
 
 void fprintValue(FILE *restrict stream, Value value) {
-	switch(value.type) {
-		case VAL_BOOL:
-			fprintf(stream, AS_BOOL(value) ? "true" : "false");
-			break;
-		case VAL_NIL:
-			fprintf(stream, "nil");
-			break;
-		case VAL_NUMBER:
-			fprintf(stream, "%g", AS_NUMBER(value));
-			break;
-		case VAL_OBJ:
-			fprintObject(stream, value);
-			break;
+	if(IS_BOOL(value)) {
+		fprintf(stream, AS_BOOL(value) ? "true" : "false");
+	} else if(IS_NIL(value)) {
+		fprintf(stream, "nil");
+	} else if(IS_NUMBER(value)) {
+		fprintf(stream, "%g", AS_NUMBER(value));
+	} else {
+		assert(IS_OBJ(value));
+		fprintObject(stream, value);
 	}
 }
 

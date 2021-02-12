@@ -50,6 +50,15 @@ struct sObj {
 	struct sObj *next;
 };
 
+#ifdef TAGGED_NAN
+XAN_STATIC_ASSERT(sizeof(double) == sizeof(uint64_t));
+XAN_STATIC_ASSERT(sizeof(Obj*) == sizeof(uint64_t));
+typedef union {
+	uint64_t u;
+	double number;
+	Obj *obj;
+} Value;
+#else /* TAGGED_NAN */
 typedef enum {
 	VAL_BOOL,
 	VAL_NIL,
@@ -65,6 +74,7 @@ typedef struct {
 		Obj *obj;
 	} as;
 } Value;
+#endif /* TAGGED_NAN */
 
 typedef struct sObjClass ObjClass;
 typedef struct sObjTable ObjTable;

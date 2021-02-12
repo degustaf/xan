@@ -69,11 +69,9 @@ static Value* findEntry(Value *entries, size_t capacityMask, Value key) {
 				if(tombstone == NULL)
 					tombstone = e;
 			}
-		} else if(SAME_VAL_TYPE(KEY(e), key)) {
-			if((IS_STRING(key) && (AS_STRING(KEY(e)) == AS_STRING(key))) ||
-					(IS_NUMBER(key) && (AS_NUMBER(KEY(e)) == AS_NUMBER(key))))
-				// We found the key.
-				return e;
+		} else if(valuesEqual(key, KEY(e))) {
+			// We found the key.
+			return e;
 		}
 
 		index = (index+2) & capacityMask;

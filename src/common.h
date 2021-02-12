@@ -9,8 +9,6 @@
 #elif defined(_MSC_VER)
 	#undef  COMPUTED_GOTO
 #endif
-// This isn't ready yet
-// #undef  COMPUTED_GOTO
 
 #undef DEBUG_PARSER
 #undef DEBUG_EXPRESSION_DESCRIPTION
@@ -21,6 +19,8 @@
 #undef DEBUG_UPVALUE_USAGE
 #undef DEBUG_STRESS_GC
 #undef DEBUG_LOG_GC
+
+#define TAGGED_NAN
 
 #define UINT8_COUNT (UINT8_MAX + 1)
 #define GC_HEAP_GROW_FACTOR 2

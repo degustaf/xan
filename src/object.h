@@ -8,26 +8,7 @@
 
 #include "type.h"
 
-#define IS_OBJ(value)			((value).type == VAL_OBJ)
-#define AS_OBJ(value)			((value).as.obj)
 #define OBJ_TYPE(value)			(AS_OBJ(value)->type)
-#define SAME_VAL_TYPE(v1, v2)	((v1).type == (v2).type)
-
-static inline bool isObjType(Value v, ObjType t) {
-	return IS_OBJ(v) && AS_OBJ(v)->type == t;
-}
-
-#define IS_TYPE(t) \
-	static inline bool IS_##t(Value value) { \
-		return isObjType(value, OBJ_##t); \
-	}
-
-#define NOTHING
-OBJ_BUILDER(IS_TYPE, NOTHING)
-
-static inline bool HAS_PROPERTIES(Value value) {
-	return IS_INSTANCE(value) || IS_ARRAY(value) || IS_STRING(value);
-}
 
 #define AS_ARRAY(value)        ((ObjArray*)AS_OBJ(value))
 #define AS_BOUND_METHOD(value) ((ObjBoundMethod*)AS_OBJ(value))
@@ -43,17 +24,60 @@ static inline bool HAS_PROPERTIES(Value value) {
 
 #define AS_CSTRING(value)      (AS_STRING(value)->chars)
 
-#define IS_BOOL(value)    ((value).type == VAL_BOOL)
-#define IS_NIL(value)     ((value).type == VAL_NIL)
-#define IS_NUMBER(value)  ((value).type == VAL_NUMBER)
+#ifdef TAGGED_NAN
+	#define SIGN_BIT		  ((uint64_t) 0x8000000000000000)
+	#define QNAN			  ((uint64_t) 0x7ffc000000000000)
+	#define TAG_NIL			  1
+	#define TAG_BOOL		  2
+	#define TAG_FALSE		  0
+	#define TAG_TRUE 		  1
 
-#define AS_BOOL(value)    ((value).as.boolean)
-#define AS_NUMBER(value)  ((value).as.number)
+	#define NIL_VAL			  ((Value){ .u = (QNAN | TAG_NIL) })
+	#define FALSE_VAL		  ((Value){ .u = (QNAN | TAG_BOOL | TAG_FALSE) })
+	#define TRUE_VAL		  ((Value){ .u = (QNAN | TAG_BOOL | TAG_TRUE) })
+	#define BOOL_VAL(value)	  ((value) ? TRUE_VAL : FALSE_VAL)
+	#define NUMBER_VAL(value) ((Value){.number = value})
+	#define OBJ_VAL(obj)	  ((Value){ .u = (SIGN_BIT | QNAN | (uint64_t)(uintptr_t)(obj))})
 
-#define BOOL_VAL(value)   ((Value){ VAL_BOOL, { .boolean = value } })
-#define NIL_VAL           ((Value){ VAL_NIL, { .number = 0 } })
-#define NUMBER_VAL(value) ((Value){ VAL_NUMBER, { .number = value } })
-#define OBJ_VAL(object)   ((Value){ VAL_OBJ, { .obj = (Obj*)object } })
+	#define IS_BOOL(value)	  (((value).u | TAG_TRUE) == TRUE_VAL.u)
+	#define IS_NIL(value)	  ((value).u == NIL_VAL.u)
+	#define IS_NUMBER(value)  (((value).u & QNAN) != QNAN)
+	#define IS_OBJ(value)	  (((value).u & (QNAN | SIGN_BIT)) == (QNAN | SIGN_BIT))
+
+	#define AS_BOOL(value)	  ((value).u == TRUE_VAL.u)
+	#define AS_NUMBER(value)  ((value).number)
+	#define AS_OBJ(value)	  ((Obj*)(uintptr_t)(((value).u) & ~(SIGN_BIT | QNAN)))
+#else /* TAGGED_NAN */
+	#define NIL_VAL           ((Value){ VAL_NIL, { .number = 0 } })
+	#define BOOL_VAL(value)   ((Value){ VAL_BOOL, { .boolean = value } })
+	#define NUMBER_VAL(value) ((Value){ VAL_NUMBER, { .number = value } })
+	#define OBJ_VAL(object)   ((Value){ VAL_OBJ, { .obj = (Obj*)object } })
+
+	#define IS_BOOL(value)    ((value).type == VAL_BOOL)
+	#define IS_NIL(value)     ((value).type == VAL_NIL)
+	#define IS_NUMBER(value)  ((value).type == VAL_NUMBER)
+	#define IS_OBJ(value)	  ((value).type == VAL_OBJ)
+
+	#define AS_BOOL(value)    ((value).as.boolean)
+	#define AS_NUMBER(value)  ((value).as.number)
+	#define AS_OBJ(value)	  ((value).as.obj)
+#endif /* TAGGED_NAN */
+
+static inline bool isObjType(Value v, ObjType t) {
+	return IS_OBJ(v) && OBJ_TYPE(v) == t;
+}
+
+#define IS_TYPE(t) \
+	static inline bool IS_##t(Value value) { \
+		return isObjType(value, OBJ_##t); \
+	}
+
+#define NOTHING
+OBJ_BUILDER(IS_TYPE, NOTHING)
+
+static inline bool HAS_PROPERTIES(Value value) {
+	return IS_INSTANCE(value) || IS_ARRAY(value) || IS_STRING(value);
+}
 
 ObjArray *newArray(VM *vm, size_t count, Value *slot);
 ObjBoundMethod *newBoundMethod(VM *vm, Value receiver, Value method);
@@ -77,7 +101,15 @@ ObjString *copyString(const char *chars, size_t length, VM *vm, Value *slot);
 void fprintObject(FILE *restrict stream, Value value);
 void printObject(Value value);
 
+#ifdef TAGGED_NAN
+static inline bool valuesEqual(Value a, Value b) {
+	if(IS_NUMBER(a) && IS_NUMBER(b))
+		return AS_NUMBER(a) == AS_NUMBER(b);
+	return a.u == b.u;
+}
+#else /* TAGGED_NAN */
 bool valuesEqual(Value, Value);
+#endif /* TAGGED_NAN */
 void fprintValue(FILE *restrict stream, Value value);
 void printValue(Value value);
 
