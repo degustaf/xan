@@ -38,7 +38,7 @@ jobs:
 
 install:
     - if [ "$TRAVIS_OS_NAME" = "windows" ]; then
-        choco install make;
+        choco install make; choco install python3
       elif [ "$TRAVIS_OS_NAME" = "linux" ] && [ "$ARCH" = "-m32" ] && [ "$TRAVIS_CPU_ARCH" = "amd64" ] ; then
         sudo apt-get install gcc-multilib;
       fi
