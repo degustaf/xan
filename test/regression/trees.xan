@@ -1,0 +1,16 @@
+{
+	class Tree {
+	  init(depth) {
+	    this.depth = depth;
+	    if (depth > 0) {
+	      this.a = Tree(depth - 1);
+	    }
+	  }
+	}
+	
+	var tree = Tree(1000);
+	// If stack resizes, then the open upvalue that should point to Tree,
+	// actually points into the æther, and gives us weird errors.
+	// Calling with a value of 1000 causes stack to grow to over 2048; If the
+	// stack is initialized to more than this, the test should be modified.
+}

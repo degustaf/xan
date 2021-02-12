@@ -42,7 +42,7 @@ static Value concatenate(VM *vm, ObjString *b, ObjString *c, Value *slot) {
 } while(false)
 
 static void growStack(VM *vm, size_t space_needed) {
-	// pointers into stack: stackTop, stackLast, vm->frames[].slots
+	// pointers into stack: stackTop, stackLast, vm->frames[].slots, openUpvalues
 	size_t stackTopIndex = vm->stackTop - vm->stack;
 
 	Value *oldStack = vm->stack;
@@ -54,6 +54,8 @@ static void growStack(VM *vm, size_t space_needed) {
 	vm->stackLast = vm->stack + vm->stackSize - 1;
 	for(size_t i = 0; i < vm->frameCount; i++)
 		vm->frames[i].slots = (Value*)((char*)vm->frames[i].slots + ((char*)vm->stack - (char*)oldStack));
+	for(ObjUpvalue **uv = &vm->openUpvalues; *uv; uv = &(*uv)->next)
+		(*uv)->location = (Value*)((char*)(*uv)->location +((char*)vm->stack - (char*)oldStack));
 }
 
 Value *incFrame(VM *vm, Reg stackUsed, Value *base, ObjClosure *function) {
