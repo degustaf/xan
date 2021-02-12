@@ -147,10 +147,13 @@ void dumpStack(VM *vm, size_t count) {
 	printf("stack = ");
 	dumpValueArray(vm->stack, vm->stackLast, count);
 	printf("frames = [");
-	for(size_t i = 0; i<vm->frameCount; i++)
-		printf("%ld, ", vm->frames[i].slots - vm->stack);
+	for(size_t i = 0; i<vm->frameCount; i++) {
+		assert(vm->frames[i].slots >= vm->stack);
+		printf("%zu, ", (size_t)(vm->frames[i].slots - vm->stack));
+	}
 	printf("]\n");
-	printf("frame[%zu] = stack[%ld] = ", vm->frameCount - 1, vm->frames[vm->frameCount - 1].slots - vm->stack);
+	assert(vm->frames[vm->frameCount - 1].slots >= vm->stack);
+	printf("frame[%zu] = stack[%zu] = ", vm->frameCount - 1, (size_t)(vm->frames[vm->frameCount - 1].slots - vm->stack));
 	dumpValueArray(vm->frames[vm->frameCount - 1].slots, vm->stackLast, count);
 }
 

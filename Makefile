@@ -96,8 +96,6 @@ $(PATHB)/%.o: $(PATHC)/%.c | $(PATHB) $(PATHD)
 	$(POSTCOMPILE)
 
 $(PATHLB)/%.o: $(PATHS)/%.c | $(PATHLB) $(PATHD)
-	echo $(OS)
-	echo $(OSTYPE)
 	$(COMPILE) -c $< -o $@
 	$(POSTCOMPILE)
 
