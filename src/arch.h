@@ -31,6 +31,10 @@
 // 	#error "Unsupported OS."
 // #endif
 
+#ifdef _WIN32
+#define _CRT_SECURE_NO_WARNINGS
+#endif
+
 #if ENDIAN == XAN_BIG_ENDIAN
 	#define ENDIAN_SELECT(le, be)	be
 	#define ENDIAN_LOHI(lo, hi)		hi lo
