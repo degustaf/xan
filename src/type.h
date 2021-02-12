@@ -52,7 +52,7 @@ struct sObj {
 
 #ifdef TAGGED_NAN
 XAN_STATIC_ASSERT(sizeof(double) == sizeof(uint64_t));
-XAN_STATIC_ASSERT(sizeof(Obj*) == sizeof(uint64_t));
+XAN_STATIC_ASSERT(sizeof(Obj*) <= sizeof(uint64_t));
 typedef union {
 	uint64_t u;
 	double number;

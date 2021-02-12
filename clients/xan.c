@@ -1,10 +1,11 @@
+#include "../src/common.h"
+
 #include <errno.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "../src/common.h"
 #include "../src/debug.h"
 #include "../src/vm.h"
 
