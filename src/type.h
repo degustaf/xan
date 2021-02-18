@@ -58,6 +58,7 @@ typedef union {
 	double number;
 	Obj *obj;
 } Value;
+XAN_STATIC_ASSERT(sizeof(Value) == sizeof(uint64_t));
 #else /* TAGGED_NAN */
 typedef enum {
 	VAL_BOOL,
@@ -193,7 +194,7 @@ typedef struct ClassCompiler {
 
 struct sCallFrame {
 	ObjClosure *c;
-	uint32_t *ip;
+	intptr_t ip;
 	Value *slots;
 };
 typedef struct sCallFrame CallFrame;
@@ -225,6 +226,7 @@ struct sVM {
 	Value *stack;
 	Value *stackTop;
 	Value *stackLast;
+	Value *base;
 	size_t stackSize;
 
 	Value exception;

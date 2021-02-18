@@ -222,7 +222,7 @@ static void freeObject(GarbageCollector *gc, Obj *object) {
 		case OBJ_FUNCTION: {
 			ObjFunction *f = (ObjFunction*)object;
 			freeChunk(gc, &f->chunk);
-			FREE(gc, ObjFunction, object);
+			_free(gc, object, sizeof(ObjFunction) + f->uvCount * sizeof(uint16_t) + (f->maxArity - f->minArity + 1) * sizeof(size_t));
 			break;
 		}
 		case OBJ_INSTANCE: {

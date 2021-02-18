@@ -10,7 +10,7 @@
 
 ObjFunction *newFunction(VM *vm, size_t uvCount, size_t varArityCount) {
 	ObjFunction *f = (ObjFunction*)allocateObject(sizeof(*f) + uvCount * sizeof(uint16_t) + varArityCount * sizeof(size_t), OBJ_FUNCTION, vm);
-	vm->frames[vm->frameCount-1].slots[0] = OBJ_VAL(f);
+	*vm->base = OBJ_VAL(f);
 
 	f->minArity = 0;
 	f->maxArity = 0;

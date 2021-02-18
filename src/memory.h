@@ -9,8 +9,9 @@
 
 #ifdef DEBUG_LOG_GC
 #define ALLOCATE(vm, type, count) \
-	(type*)reallocate(vm, NULL, 0, sizeof(type) * (count)); \
-	printf("ALLOCATE %ld\n", sizeof(type) * (count))
+	({ void* p = reallocate(vm, NULL, 0, sizeof(type) * (count)); \
+	printf("%p ALLOCATE %ld\n", p, sizeof(type) * (count)); \
+	(type*) p;})
 #else /* DEBUG_LOG_GC */
 #define ALLOCATE(vm, type, count) \
 	(type*)reallocate(vm, NULL, 0, sizeof(type) * (count))

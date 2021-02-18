@@ -9,19 +9,6 @@ class Random {
 	}
 }
 
-var a = Random();
-for(var i = 0; i < 9; i = i + 1)
-	print(a.next());
-// expect: 22896
-// expect: 34761
-// expect: 34014
-// expect: 39231
-// expect: 52540
-// expect: 41445
-// expect: 1546
-// expect: 5947
-// expect: 65224
-
 class Ball {
 	init(rand) {
 		this.x = rand.next() % 500;
