@@ -45,7 +45,7 @@ static bool ArrayInit(VM *vm, int argCount, Value *args) {
 	size_t count = argCount == 0 ? 0 : (size_t)AS_NUMBER(args[0]);
 	Value v = argCount < 2 ? NIL_VAL : args[1];
 	ObjArray *ret = newArray(vm, count);
-	args[-1] = OBJ_VAL(ret);
+	args[-3] = OBJ_VAL(ret);
 	for(size_t i=0; i<ret->count; i++)
 		ret->values[i] = v;
 	decFrame(vm);
@@ -58,7 +58,7 @@ static bool ArrayCount(VM *vm, int argCount, Value *args) {
 		return false;
 	}
 	assert(IS_ARRAY(args[-1]));
-	args[-1] = NUMBER_VAL(AS_ARRAY(args[-1])->count);
+	args[-3] = NUMBER_VAL(AS_ARRAY(args[-1])->count);
 	return true;
 }
 

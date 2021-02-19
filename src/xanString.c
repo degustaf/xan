@@ -61,7 +61,7 @@ static bool stringLength(VM *vm, int argCount, Value *args) {
 		return false;
 	}
 	assert(IS_STRING(args[-1]));
-	args[-1] = NUMBER_VAL(AS_STRING(args[-1])->length);
+	args[-3] = NUMBER_VAL(AS_STRING(args[-1])->length);
 	return true;
 }
 

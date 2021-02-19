@@ -44,7 +44,7 @@ bool TableInit (VM *vm, int argCount, __attribute__((unused)) Value *args) {
 	incFrame(vm, 1, vm->base + argCount + 1, NULL);
 	ObjTable *t = newTable(vm, argCount);
 	decFrame(vm);
-	vm->base[-1] = OBJ_VAL(t);
+	vm->base[-3] = OBJ_VAL(t);
 
 	for(int i = 0; i<argCount; i+=2) {
 		assert(IS_STRING(vm->base[i]));
@@ -141,7 +141,7 @@ static bool TableNew(VM *vm, int argCount, Value *args) {
 	}
 
 	incFrame(vm, 1, vm->base + argCount + 1, NULL);
-	args[-1] = OBJ_VAL(newTable(vm, (size_t)(AS_NUMBER(args[0]))));
+	args[-3] = OBJ_VAL(newTable(vm, (size_t)(AS_NUMBER(args[0]))));
 	decFrame(vm);
 	return true;
 }

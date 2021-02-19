@@ -1006,12 +1006,13 @@ static Reg argumentList(Parser *p, expressionDescription *e, ByteCode op) {
 	expressionDescription args;
 	Reg nargs;
 	Reg base = e->u.s.info;
-	if(op == OP_INVOKE) base++;	// return reg is same as property name reg, which is at base + 1.
+	regReserve(p->currentCompiler, 2);	// Space for call frame info.
+	// if(op == OP_INVOKE) base++;	// return reg is same as property name reg, which is at base + 1.
 	if(match(p, TOKEN_RIGHT_PAREN)) {
 		args.type = VOID_EXTYPE;
 		nargs = 0;
 	} else {
-		nargs = exprList(p, &args, base);
+		nargs = exprList(p, &args, base + 2);
 		// TODO if(args.type == CALL_EXTYPE)	// multiple returns requires varargs.
 		consume(p, TOKEN_RIGHT_PAREN, "Expect ')' after expression.");
 	}
@@ -1020,9 +1021,13 @@ static Reg argumentList(Parser *p, expressionDescription *e, ByteCode op) {
 		exprFree(p->currentCompiler, &args);
 		if(base + nargs > p->currentCompiler->nextReg)
 			regReserve(p->currentCompiler, 1);
-		exprToReg(p, &args, base + nargs);
+		exprToReg(p, &args, base + nargs + 2);
 	}
+#if false
 	OP_position info = emit_ABC(p, op, (op == OP_INVOKE) ? base - 1 : base, 1, nargs);
+#else
+	OP_position info = emit_ABC(p, op, base, 1, nargs);
+#endif
 	exprInit(e, CALL_EXTYPE, info);
 	e->u.s.aux = base;
 	p->currentCompiler->nextReg = base + 1;

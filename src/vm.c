@@ -88,8 +88,8 @@ CallFrame *decFrame(VM *vm) {
 		vm->base -= frame[1].ip;
 	} else {
 		uint32_t bytecode = *((uint32_t*)(frame->ip) - 1);
-		Reg ra = RA(bytecode) + (OP(bytecode) == OP_INVOKE ? 2 : 1);	// can this be normalized and moved into the parser?
-		vm->base -= ra;
+		Reg ra = RA(bytecode) + 1;
+		vm->base -= ra + 2;
 	}
 	return frame;
 }
@@ -182,7 +182,7 @@ static bool call(VM *vm, ObjClosure *function, Reg calleeReg, Reg argCount) {
 		return false;
 	}
 
-	if(incFrame(vm, function->f->stackUsed, vm->base + calleeReg, function) == NULL)
+	if(incFrame(vm, function->f->stackUsed, vm->base + calleeReg + 2, function) == NULL)
 		return false;
 
 	CallFrame *frame = &vm->frames[vm->frameCount-1];
@@ -197,7 +197,7 @@ static bool callValue(VM *vm, Reg calleeReg, Reg argCount) {
 		switch(OBJ_TYPE(callee)) {
 			case OBJ_BOUND_METHOD: {
 				ObjBoundMethod *bound = AS_BOUND_METHOD(callee);
-				vm->base[calleeReg] = bound->receiver;
+				vm->base[calleeReg + 2] = bound->receiver;
 				if(bound->method->type == OBJ_CLOSURE)
 					return call(vm, (ObjClosure*)bound->method, calleeReg, argCount);
 				assert(bound->method->type == OBJ_NATIVE);
@@ -217,13 +217,14 @@ static bool callValue(VM *vm, Reg calleeReg, Reg argCount) {
 					incFrame(vm, 1, vm->base + vm->frames[vm->frameCount-1].c->f->stackUsed + 1, NULL);	// don't overwrite arguments.
 					ObjInstance *ret = newInstance(vm, klass);
 					decFrame(vm);
-					vm->base[calleeReg] = OBJ_VAL(ret);
+					vm->base[calleeReg + 2] = OBJ_VAL(ret);
 					return call(vm, AS_CLOSURE(initializer), calleeReg, argCount);
-				} else if(argCount) {
+				}
+				if(argCount) {
 					runtimeError(vm, "Expected 0 arguments but got %d.", argCount);
 					return false;
 				}
-				incFrame(vm, 1, vm->base + argCount + 1, NULL);	// don't overwrite arguments.
+				incFrame(vm, 1, vm->base + calleeReg + argCount, NULL);	// don't overwrite arguments.
 				ObjInstance *ret = newInstance(vm, klass);
 				decFrame(vm);
 				vm->base[calleeReg] = OBJ_VAL(ret);
@@ -234,7 +235,7 @@ static bool callValue(VM *vm, Reg calleeReg, Reg argCount) {
 native:
 			case OBJ_NATIVE: {
 				NativeFn native = AS_NATIVE(callee);
-				incFrame(vm, argCount, vm->base + calleeReg, NULL);
+				incFrame(vm, argCount, vm->base + calleeReg + 2, NULL);
 				bool ret = native(vm, argCount, vm->base);
 				decFrame(vm);
 				return ret;
@@ -277,8 +278,9 @@ static bool invokeMethod(VM *vm, int16_t instanceReg, ObjString *name, Reg argCo
 	}
 	ObjInstance *instance = AS_INSTANCE(inst);
 	assert(instance->klass->methods);
-	if((!(IS_ARRAY(inst) || IS_STRING(inst))) && (tableGet(instance->fields, OBJ_VAL(name), vm->base + instanceReg + 1))) {
-		return callValue(vm, instanceReg + 1, argCount);
+	if((!(IS_ARRAY(inst) || IS_STRING(inst))) && (tableGet(instance->fields, OBJ_VAL(name), &method))) {
+		vm->base[instanceReg] = method;
+		return callValue(vm, instanceReg, argCount);
 	}
 	if(!tableGet(instance->klass->methods, OBJ_VAL(name), &method)) {
 		runtimeError(vm, "Undefined property '%s'.", name->chars);
@@ -286,12 +288,20 @@ static bool invokeMethod(VM *vm, int16_t instanceReg, ObjString *name, Reg argCo
 	}
 	assert(isObjType(method, OBJ_CLOSURE) || isObjType(method, OBJ_NATIVE));
 
-	vm->base[instanceReg + 1] = OBJ_VAL(instance);
+	vm->base[instanceReg + 2] = OBJ_VAL(instance);
+	vm->base[instanceReg] = method;
 	if(AS_OBJ(method)->type == OBJ_CLOSURE)
-		return call(vm, AS_CLOSURE(method), instanceReg + 1, argCount);
+		return call(vm, AS_CLOSURE(method), instanceReg, argCount);
 	assert(AS_OBJ(method)->type == OBJ_NATIVE);
 	NativeFn native = AS_NATIVE(method);
-	return native(vm, argCount, vm->base + instanceReg + 2);
+	incFrame(vm, argCount, vm->base + instanceReg + 2, NULL);
+#ifdef DEBUG_STACK_USAGE
+		dumpStack(vm, 25);
+		printf("\n");
+#endif /* DEBUG_STACK_USAGE */
+	bool ret = native(vm, argCount, vm->base);
+	decFrame(vm);
+	return ret;
 
 }
 
@@ -369,7 +379,7 @@ static InterpretResult run(VM *vm) {
 	register uint32_t *ip = (uint32_t*)frame->ip;
 	while(true) {
 #ifdef DEBUG_STACK_USAGE
-		dumpStack(vm, 8);
+		dumpStack(vm, 25);
 #endif /* DEBUG_STACK_USAGE */
 #ifdef DEBUG_UPVALUE_USAGE
 		dumpOpenUpvalues(vm);
@@ -484,7 +494,7 @@ static InterpretResult run(VM *vm) {
 				closeUpvalues(vm, oldBase - 1);
 				// ensure we close this in oldBase[-1] as an upvalue before moving return value.
 				for(size_t i = 0; i < count; i++) {
-					oldBase[-1 + i] = oldBase[ra + i];
+					oldBase[-3 + i] = oldBase[ra + i];
 				}
 				DISPATCH;
 			}

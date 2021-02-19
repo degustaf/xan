@@ -15,13 +15,13 @@ static bool ExceptionNew(VM *vm, int argCount, Value *args) {
 	exc->fields = NULL;
 	exc->msg = NIL_VAL;
 	exc->topFrame = vm->frameCount;
-	args[-1] = OBJ_VAL(exc);
+	args[-3] = OBJ_VAL(exc);
 	return true;
 }
 
 void ExceptionFormattedStr(VM *vm, const char* format, ...) {
-	Value args[2];
-	ExceptionNew(vm, 0, &args[1]);
+	Value args[5];
+	ExceptionNew(vm, 0, args + 3);
 	ObjException *exc = AS_EXCEPTION(args[0]);
 	vm->exception = OBJ_VAL(exc);
 	va_list args1, args2;
@@ -42,7 +42,7 @@ bool ExceptionInit(VM *vm, int argCount, Value *args) {
 		return false;
 	}
 	ExceptionNew(vm, 0, args);
-	ObjException *ret = AS_EXCEPTION(args[-1]);
+	ObjException *ret = AS_EXCEPTION(args[-3]);
 	ret->msg = args[0];
 
 	return true;

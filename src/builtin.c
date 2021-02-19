@@ -15,7 +15,7 @@ static bool clockNative(VM *vm, int argCount, Value *args) {
 		ExceptionFormattedStr(vm, "Function 'clock' expected 0 argument but got %d.", argCount);
 		return false;
 	}
-	args[-1] = NUMBER_VAL((double)clock() / CLOCKS_PER_SEC);
+	args[-3] = NUMBER_VAL((double)clock() / CLOCKS_PER_SEC);
 	return true;
 }
 
@@ -26,7 +26,7 @@ static bool printNative(VM *vm, int argCount, Value *args) {
 	}
 	printValue(*args);
 	printf("\n");
-	args[-1] = NIL_VAL;
+	args[-3] = NIL_VAL;
 	return true;
 }
 
@@ -35,7 +35,7 @@ static bool sqrtNative(VM *vm, int argCount, Value *args) {
 		ExceptionFormattedStr(vm, "Function 'sqrt' expected 1 argument but got %d.", argCount);
 		return false;
 	}
-	args[-1] = NUMBER_VAL(sqrt(AS_NUMBER(*args)));
+	args[-3] = NUMBER_VAL(sqrt(AS_NUMBER(*args)));
 	return true;
 }
 
