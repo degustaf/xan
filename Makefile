@@ -118,11 +118,11 @@ test: xan$(TARGET_EXTENSION)
 
 unittest: $(UBINS)
 
-release: clean
+release:
 	$(MAKE) DEF="$(DEF) -DNDEBUG -O3" PATHB="releasebuild" test
 
-benchmark: releasebuild/xan$(TARGET_EXTENSION)
-	python3 util/benchmark.py $<
+benchmark: release
+	python3 util/benchmark.py releasebuild/xan$(TARGET_EXTENSION)
 
 clean: _clean
 	$(MAKE) PATHB="releasebuild" _clean

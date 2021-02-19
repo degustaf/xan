@@ -195,7 +195,6 @@ typedef struct ClassCompiler {
 struct sCallFrame {
 	ObjClosure *c;
 	intptr_t ip;
-	Value *slots;
 };
 typedef struct sCallFrame CallFrame;
 

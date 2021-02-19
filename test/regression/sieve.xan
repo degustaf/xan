@@ -1,0 +1,16 @@
+fun sieve(n) {
+	var primeCount = 0;
+
+	var flags = Array(n+1, true);
+
+	for(var i=2; i<=n; i = i + 1) {
+		if(flags[i]) {
+			primeCount = primeCount + 1;
+			for(var j=2*i; j<=n; j = j + i)
+				flags[j] = false;
+		}
+	}
+	return primeCount;
+}
+
+print(sieve(7));	// expect: 4

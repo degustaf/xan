@@ -1,0 +1,60 @@
+fun Pfannkuchen(n) {
+	var maxFlipsCount = 0;
+	var checkSum = 0;
+	var perm1 = Array(n);
+	var count = Array(n);
+
+	for(var i=0; i<n; i = i+1)
+		perm1[i] = i;
+	var r = n;
+
+	for(var permCount = 0; true; permCount = permCount + 1) {
+		for(;r > 1; r = r - 1)
+			count[r-1] = r;
+		var perm = Array(n);
+		for(var i=0; i<n; i=i+1)
+			perm[i] = perm1[i];
+
+		var flipsCount = 0;
+		var k;
+
+		while((k=perm[0]) != 0) {
+			var k2 = (k+1)/2;
+			k2 = k2 - (k2 % 1);
+			for(var i=0; i<k2; i = i + 1) {
+				var temp = perm[i];
+				perm[i] = perm[k-i];
+				perm[k-i] = temp;
+			}
+			flipsCount = flipsCount + 1;
+		}
+
+		if(flipsCount > maxFlipsCount)
+			maxFlipsCount = flipsCount;
+		if(permCount % 2 == 0) {
+			checkSum = checkSum + flipsCount;
+		} else {
+			checkSum = checkSum - flipsCount;
+		}
+
+		for(;true; r = r + 1) {
+			if(r == n) {
+				print(checkSum);
+				return maxFlipsCount;
+			}
+
+			var perm0 = perm1[0];
+			for(var i=0; i<r; i = i + 1)
+				perm1[i] = perm1[i + 1];
+			perm1[r] = perm0;
+
+			count[r] = count[r] - 1;
+			if(count[r] > 0)
+				break;
+		}
+	}
+}
+
+print(Pfannkuchen(3));
+// expect: 2
+// expect: 2

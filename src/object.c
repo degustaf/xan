@@ -50,31 +50,30 @@ ObjBoundMethod *newBoundMethod(VM *vm, Value receiver, Value method) {
 	return ret;
 }
 
-ObjClass *newClass(VM *vm, ObjString *name, Value *slot) {
-	// name and slot could alias.
+ObjClass *newClass(VM *vm, ObjString *name) {
 	ObjClass *klass = ALLOCATE_OBJ(vm, ObjClass, OBJ_CLASS);
 	klass->name = name;
 	klass->methods = NULL;
 	klass->cname = NULL;
 	klass->methodsArray = NULL;
-	*slot = OBJ_VAL(klass);	// name is still reachable through klass.
-	klass->methods = newTable(vm, 0, NULL);
+	vm->base[0] = OBJ_VAL(klass);	// name is still reachable through klass.
+	klass->methods = newTable(vm, 0);
 	writeBarrier(vm, klass);
 	return klass;
 }
 
-void defineNative(VM *vm, ObjTable *t, Value *slots, const NativeDef *f) {
-	slots[0] = OBJ_VAL(copyString(f->name, strlen(f->name), vm, slots));
-	slots[1] = OBJ_VAL(newNative(vm, f->method));
-	assert(IS_STRING(slots[0]));
-	tableSet(vm, t, slots[0], slots[1]);
+void defineNative(VM *vm, ObjTable *t, const NativeDef *f) {
+	vm->base[0] = OBJ_VAL(copyString(f->name, strlen(f->name), vm));
+	vm->base[1] = OBJ_VAL(newNative(vm, f->method));
+	assert(IS_STRING(vm->base[0]));
+	tableSet(vm, t, vm->base[0], vm->base[1]);
 }
 
-void defineNativeClass(VM *vm, ObjTable *t, Value *slots, ObjClass *klass) {
+void defineNativeClass(VM *vm, ObjTable *t, ObjClass *klass) {
 	assert(vm->frameCount + 1 < vm->frameSize);
 	// This prevents a reallocation of vm->frames when incFrame is called.
 
-	klass->name = copyString(klass->cname, strlen(klass->cname), vm, slots);
+	klass->name = copyString(klass->cname, strlen(klass->cname), vm);
 	writeBarrier(vm, klass);
 
 	// klass is statically allocated, so it avoids newClass. This puts it in the linked list of objects for the garbage collector.
@@ -82,60 +81,59 @@ void defineNativeClass(VM *vm, ObjTable *t, Value *slots, ObjClass *klass) {
 	klass->obj.next = vm->gc.objects;
 	vm->gc.objects = (Obj*)klass;
 
-	slots[0] = OBJ_VAL(klass);
+	vm->base[0] = OBJ_VAL(klass);
 
-	Value *slots2 =  incFrame(vm, 2, &slots[1], NULL);
-	slots = NULL;	// incFrame could invalidate slots. This prevents us from using it later.
-	klass->methods = newTable(vm, 0, NULL);
+	incFrame(vm, 2, vm->base + 1, NULL);
+	klass->methods = newTable(vm, 0);
 	writeBarrier(vm, klass);
 	assert(klass->methods);
 	for(size_t i = 0; klass->methodsArray[i].name; i++) {
-		defineNative(vm, klass->methods, slots2, &klass->methodsArray[i]);
-		if(AS_STRING(slots2[0]) == vm->newString)
-			klass->newFn = AS_OBJ(slots2[1]);
+		defineNative(vm, klass->methods, &klass->methodsArray[i]);
+		// defineNative uses vm->base[0] for the function name and vm->base[1] for the function.
+		if(AS_STRING(vm->base[0]) == vm->newString)
+			klass->newFn = AS_OBJ(vm->base[1]);
 	}
 	decFrame(vm);
 
 	tableSet(vm, t, OBJ_VAL(klass->name), OBJ_VAL(klass));
 }
 
-ObjModule * newModule(VM *vm, ObjString *name, Value *v) {
-	// It is the callers responsability to ensure that name is findable by the GC.
+ObjModule * newModule(VM *vm, ObjString *name) {
+	vm->base[0] = OBJ_VAL(name);
 	ObjModule *module = ALLOCATE_OBJ(vm, ObjModule, OBJ_MODULE);
 	module->name = name;
 	module->items = NULL;
-	*v = OBJ_VAL(module);
-	module->items = newTable(vm, 0, NULL);
+	vm->base[0] = OBJ_VAL(module);
+	module->items = newTable(vm, 0);
 	writeBarrier(vm, module);
 	return module;
 }
 
-ObjModule *defineNativeModule(VM *vm, Value *slots, ModuleDef *def) {
+ObjModule *defineNativeModule(VM *vm, ModuleDef *def) {
 	assert(vm->frameCount + 2 < vm->frameSize);
 	// This prevents a reallocation of vm->frames when incFrame is called, or when defineNativeClass is called.
 
-	slots[0] = OBJ_VAL(copyString(def->name, strlen(def->name), vm, slots));
-	ObjModule *ret = newModule(vm, AS_STRING(slots[0]), &slots[1]);
-	slots[0] = OBJ_VAL(ret);		// For GC.
+	ObjString *name = copyString(def->name, strlen(def->name), vm);
+	ObjModule *ret = newModule(vm, name);
+	vm->base[0] = OBJ_VAL(ret);		// For GC.
 
-	Value *slots2 = incFrame(vm, 1, &slots[1], NULL);
-	slots = NULL;	// incFrame could invalidate slots. This prevents us from using it later.
+	incFrame(vm, 1, vm->base + 1, NULL);
 	for(ObjClass **c = def->classes; *c; c++)
-		defineNativeClass(vm, ret->items, slots2, *c);
+		defineNativeClass(vm, ret->items, *c);
 	assert(def->methods);
 	for(NativeDef *m = def->methods; m->name; m++)
-		defineNative(vm, ret->items, slots2, m);
+		defineNative(vm, ret->items, m);
 	decFrame(vm);
 
 	return ret;
 }
 
-ObjInstance *newInstance(VM *vm, ObjClass *klass, Value *slot) {
+ObjInstance *newInstance(VM *vm, ObjClass *klass) {
 	ObjInstance *o = ALLOCATE_OBJ(vm, ObjInstance, OBJ_INSTANCE);
 	o->klass = klass;
 	o->fields = NULL;
-	*slot = OBJ_VAL(o);
-	o->fields = newTable(vm, 0, NULL);
+	vm->base[0] = OBJ_VAL(o);
+	o->fields = newTable(vm, 0);
 	writeBarrier(vm, o);
 	return o;
 }
@@ -146,8 +144,8 @@ ObjNative *newNative(VM *vm, NativeFn function) {
 	return native;
 }
 
-ObjArray *duplicateArray(VM *vm, ObjArray *source, Value *slot) {
-	ObjArray *dest = newArray(vm, source->count, slot);
+ObjArray *duplicateArray(VM *vm, ObjArray *source) {
+	ObjArray *dest = newArray(vm, source->count);
 	for(size_t i=0; i<source->count; i++)
 		dest->values[i] = source->values[i];
 	return dest;

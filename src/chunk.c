@@ -11,8 +11,8 @@ void initChunk(VM *vm, Chunk *chunk) {
 	chunk->lines = NULL;
 	chunk->constants = NULL;		// For GC
 	chunk->constantIndices = NULL;	// For GC
-	chunk->constants = newArray(vm, 0, NULL);	// Slot is only needed to store the return value for the GC while resizing.
-	chunk->constantIndices = newTable(vm, 0, NULL);
+	chunk->constants = newArray(vm, 0);
+	chunk->constantIndices = newTable(vm, 0);
 }
 
 void finalizeChunk(Chunk *chunk) {

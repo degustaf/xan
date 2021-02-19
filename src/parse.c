@@ -824,7 +824,7 @@ static void initCompiler(Parser *p, Compiler *compiler, FunctionType type) {
 	compiler->name = NULL;
 	initChunk(p->vm, &compiler->chunk);
 	if(type != TYPE_SCRIPT)
-		compiler->name = copyString(p->previous.start, p->previous.length, p->vm, p->vm->base);
+		compiler->name = copyString(p->previous.start, p->previous.length, p->vm);
 	compiler->pendingJumpList = NO_JUMP;
 	compiler->pendingContinueList = NO_JUMP;
 	compiler->last_target = NO_JUMP;
@@ -1076,7 +1076,7 @@ static void array(Parser *p, expressionDescription *e) {
 
 			if(ExprIsConstantHasNoJump(&val)) {
 				if(array == NULL) {
-					array = newArray(p->vm, count + 1, p->vm->base);
+					array = newArray(p->vm, count + 1);
 					uint16_t constIdx = makeConstant(p, OBJ_VAL(array));
 					currentChunk(p->currentCompiler)->code[ins_location] =
 						OP_AD(OP_DUPLICATE_ARRAY, nextReg - 1, constIdx);
@@ -1121,7 +1121,7 @@ static void makeStringConstant(Parser *p, expressionDescription *e, const char *
 	e->u.r.r = 0;
 	e->u.s.info = 0;
 #endif /* DEBUG_EXPRESSION_DESCRIPTION */
-	e->u.v = OBJ_VAL(copyString(s, length, p->vm, p->vm->base));
+	e->u.v = OBJ_VAL(copyString(s, length, p->vm));
 	e->true_jump = e->false_jump = NO_JUMP;
 }
 
@@ -1153,7 +1153,9 @@ static void table(Parser *p, expressionDescription *e) {
 
 			if(ExprIsConstant(&key) && (key.type != NIL_EXTYPE) && (key.type == STRING_EXTYPE || key.type == NUMBER_EXTYPE)) {
 				if(t == NULL) {
-					t = newTable(p->vm, count, &p->vm->base[1]);
+					incFrame(p->vm, 1, p->vm->base + 1, NULL);
+					t = newTable(p->vm, count);
+					decFrame(p->vm);
 					uint16_t constIdx = makeConstant(p, OBJ_VAL(t));
 					currentChunk(p->currentCompiler)->code[ins_location] =
 						OP_AD(OP_DUPLICATE_TABLE, nextReg - 1, constIdx);
@@ -1305,7 +1307,7 @@ static int16_t var_lookup(Parser *p, Compiler *c, Token *name, expressionDescrip
 			}
 		}
 	} else {
-		exprInit(e, GLOBAL_EXTYPE, makeConstant(p, OBJ_VAL(copyString(name->start, name->length, p->vm, p->vm->base))));
+		exprInit(e, GLOBAL_EXTYPE, makeConstant(p, OBJ_VAL(copyString(name->start, name->length, p->vm))));
 	}
 	return -2;
 }
@@ -1477,7 +1479,7 @@ static void scopeVariable(Parser *p, expressionDescription *e, Token *name) {
 	PRINT_FUNCTION;
 	int r = declareVariable(p, name);
 	if(r < 0) {
-		exprInit(e, GLOBAL_EXTYPE, makeConstant(p, OBJ_VAL(copyString(name->start, name->length, p->vm, p->vm->base))));
+		exprInit(e, GLOBAL_EXTYPE, makeConstant(p, OBJ_VAL(copyString(name->start, name->length, p->vm))));
 	} else {
 		exprInit(e, LOCAL_EXTYPE, r);
 		e->assignable = true;
@@ -1693,10 +1695,10 @@ static void classDeclaration(Parser *p) {
 	classCompiler.hasSuperClass = false;
 	p->currentClass = p->vm->currentClassCompiler = &classCompiler;
 	classCompiler.methods = NULL;
-	classCompiler.methods = newTable(p->vm, 0, NULL);
+	classCompiler.methods = newTable(p->vm, 0);
 
 	printExpr(stderr, &name);
-	exprInit(&klass, RELOC_EXTYPE, emit_AD(p, OP_CLASS, 0, makeConstant(p, OBJ_VAL(copyString(classCompiler.name.start, classCompiler.name.length, p->vm, p->vm->base)))));
+	exprInit(&klass, RELOC_EXTYPE, emit_AD(p, OP_CLASS, 0, makeConstant(p, OBJ_VAL(copyString(classCompiler.name.start, classCompiler.name.length, p->vm)))));
 	exprAnyReg(p, &klass);
 	emitDefine(p, &name, &klass);
 	var_lookup(p, p->currentCompiler, &classCompiler.name, &klass, true);

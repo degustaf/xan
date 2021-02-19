@@ -1,0 +1,28 @@
+
+fun repeat(alu) {
+	var i = 0;
+	fun f() {
+		if(i >= alu.length())
+			i = 0;
+		i = i + 1;
+		return alu[i-1];
+	}
+	return f;
+}
+
+var LENGTH = 60;
+
+fun make(id, desc, n, f) {
+	var line = "";
+	for(var i=0; i<n; i = i+1) {
+		line = line + f();
+	}
+	print(line);	// expect: GGCC
+}
+
+var alu = "GGCC";
+fun main(n) {
+	make("ONE",   "Homo sapiens alu",       n * 2, repeat(alu));
+}
+
+main(2);

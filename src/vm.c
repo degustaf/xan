@@ -26,14 +26,14 @@ static bool isFalsey(Value v) {
 					 || (IS_TABLE(v) && count(AS_TABLE(v)) == 0);
 }
 
-static Value concatenate(VM *vm, ObjString *b, ObjString *c, Value *slot) {
+static Value concatenate(VM *vm, ObjString *b, ObjString *c) {
 	size_t length = b->length + c->length;
 	char *chars = ALLOCATE(vm, char, length+1);
 	memcpy(chars, b->chars, b->length);
 	memcpy(chars + b->length, c->chars, c->length);
 	chars[length] = '\0';
 
-	ObjString *result = takeString(chars, length, vm, slot);
+	ObjString *result = takeString(chars, length, vm);
 	return OBJ_VAL(result);
 }
 
@@ -41,8 +41,8 @@ static Value concatenate(VM *vm, ObjString *b, ObjString *c, Value *slot) {
 	ExceptionFormattedStr(vm, __VA_ARGS__); \
 } while(false)
 
-static void growStack(VM *vm, size_t space_needed) {
-	// pointers into stack: stackTop, stackLast, vm->frames[].slots, openUpvalues
+void growStack(VM *vm, size_t space_needed) {
+	// pointers into stack: stackTop, stackLast, openUpvalues, base
 	size_t stackTopIndex = vm->stackTop - vm->stack;
 
 	Value *oldStack = vm->stack;
@@ -52,16 +52,13 @@ static void growStack(VM *vm, size_t space_needed) {
 	vm->stack = GROW_ARRAY(vm, vm->stack, Value, oldStackSize, vm->stackSize);
 	vm->stackTop = vm->stack + stackTopIndex;
 	vm->stackLast = vm->stack + vm->stackSize - 1;
-	for(int i = (int)vm->frameCount; i >= 0; i--) {
-		vm->frames[i].slots = (Value*)((char*)vm->frames[i].slots + ((char*)vm->stack - (char*)oldStack));
-	}
+	vm->base += vm->stack - oldStack;
 	for(ObjUpvalue **uv = &vm->openUpvalues; *uv; uv = &(*uv)->next)
-		(*uv)->location = (Value*)((char*)(*uv)->location +((char*)vm->stack - (char*)oldStack));
+		(*uv)->location += vm->stack - oldStack;
 }
 
 Value *incFrame(VM *vm, Reg stackUsed, Value *base, ObjClosure *function) {
 	CallFrame *frame = &vm->frames[vm->frameCount-1];
-	// fprintf(stderr, "incFrame\t%zu\t%p\t%ld\t%p\t%p\n", vm->frameCount, frame->c, frame->ip, frame->slots, vm->base);
 	if(vm->frameCount == vm->frameSize) {
 		size_t oldFrameSize = vm->frameSize;
 		vm->frameSize = GROW_CAPACITY(vm->frameSize);
@@ -72,40 +69,28 @@ Value *incFrame(VM *vm, Reg stackUsed, Value *base, ObjClosure *function) {
 			return NULL;
 		}
 	}
-	if(base + 1 + stackUsed > vm->stackLast) {
-		size_t base_index = base - vm->stack;
-		growStack(vm, base_index + stackUsed + 2);
-		base = vm->stack + base_index;
-	}
-	if(base + stackUsed + 1 > vm->stackTop)
-		vm->stackTop = base + stackUsed + 1;
+	StackUsed(vm, &base, stackUsed + 1);
 
-	// if(function == NULL)	// C function reserving Stack space.
-	// 	vm->frames[vm->frameCount-1].ip = base + 1 - vm->base;
-	// fprintf(stderr, "\t\t%zu\t%p\t%ld\t%p\t%p\n", vm->frameCount, frame->c, frame->ip, frame->slots, vm->base);
 	frame = &vm->frames[vm->frameCount++];
+	if(function == NULL)	// C function reserving Stack space.
+		vm->frames[vm->frameCount-1].ip = base + 1 - vm->base;
 	frame->c = function;
-	frame->slots = base + 1;
 	vm->base = base + 1;
 
-	// fprintf(stderr, "\t\t%zu\t%p\t%ld\t%p\t%p\n", vm->frameCount, frame->c, frame->ip, frame->slots, vm->base);
-	// fflush(stderr);
 	return vm->base;
 }
 
 CallFrame *decFrame(VM *vm) {
 	CallFrame *frame = &vm->frames[vm->frameCount-1];
-	// fprintf(stderr, "decFrame\t%zu\t%p\t%ld\t%p\t%p\n", vm->frameCount, frame->c, frame->ip, frame->slots, vm->base);
 	vm->frameCount--;
 	frame = &vm->frames[vm->frameCount - 1];
-	// fprintf(stderr, "\t\t%zu\t%p\t%ld\t%p\t%p\n", vm->frameCount, frame->c, frame->ip, frame->slots, vm->base);
-	// if(frame->c == NULL) {
-	// 	assert(frame->slots == vm->base - frame->ip);
-	// } else {
-	// 	uint32_t bytecode = *(uint32_t*)(frame->ip - 1);
-	// 	assert(frame->slots == vm->base - RA(bytecode));
-	// }
-	vm->base = frame->slots;
+	if(frame[1].c == NULL) {
+		vm->base -= frame[1].ip;
+	} else {
+		uint32_t bytecode = *((uint32_t*)(frame->ip) - 1);
+		Reg ra = RA(bytecode) + (OP(bytecode) == OP_INVOKE ? 2 : 1);	// can this be normalized and moved into the parser?
+		vm->base -= ra;
+	}
 	return frame;
 }
 
@@ -148,7 +133,6 @@ void initVM(VM *vm) {
 		CallFrame *fr = vm->frames + i;
 		fr->c = NULL;
 		fr->ip = 0;
-		fr->slots = NULL;
 	}
 
 	vm->stackSize = BASE_STACK_SIZE;
@@ -162,16 +146,14 @@ void initVM(VM *vm) {
 	// set up a base frame so that we don't underflow during decFrame.
 	vm->frames[0].c = NULL;
 	vm->frames[0].ip = 0;
-	vm->frames[0].slots = vm->base;
 	vm->frameCount = 1;
 
-	Value *slots = incFrame(vm, 2, vm->base, NULL);
-	vm->strings = newTable(vm, 0, slots);
-	vm->globals = newTable(vm, 0, slots);
-	vm->initString = copyString("init", 4, vm, slots);
-	vm->newString = copyString("new", 3, vm, slots);
-	assert(slots);	// If we're out of memory now, we have no chance and might as well bail.
-	ObjModule *builtinM = defineNativeModule(vm, slots, &builtinDef);
+	incFrame(vm, 2, vm->base, NULL);
+	vm->strings = newTable(vm, 0);
+	vm->globals = newTable(vm, 0);
+	vm->initString = copyString("init", 4, vm);
+	vm->newString = copyString("new", 3, vm);
+	ObjModule *builtinM = defineNativeModule(vm, &builtinDef);
 	vm->globals = builtinM->items;
 	decFrame(vm);
 }
@@ -190,7 +172,7 @@ void freeVM(VM *vm) {
 		fprintf(stderr, "Memory manager lost %zu bytes.\n", vm->gc.bytesAllocated);
 }
 
-static bool call(VM *vm, ObjClosure *function, Value *base, Reg argCount) {
+static bool call(VM *vm, ObjClosure *function, Reg calleeReg, Reg argCount) {
 	if(argCount < function->f->minArity) {
 		runtimeError(vm, "Expected at least %d arguments but got %d.", function->f->minArity, argCount);
 		return false;
@@ -200,8 +182,7 @@ static bool call(VM *vm, ObjClosure *function, Value *base, Reg argCount) {
 		return false;
 	}
 
-	Value *slots = incFrame(vm, function->f->stackUsed, base, function);
-	if(slots == NULL)
+	if(incFrame(vm, function->f->stackUsed, vm->base + calleeReg, function) == NULL)
 		return false;
 
 	CallFrame *frame = &vm->frames[vm->frameCount-1];
@@ -210,43 +191,53 @@ static bool call(VM *vm, ObjClosure *function, Value *base, Reg argCount) {
 	return true;
 }
 
-static bool callValue(VM *vm, Value *callee, Reg argCount) {
-	if(IS_OBJ(*callee)) {
-		switch(OBJ_TYPE(*callee)) {
+static bool callValue(VM *vm, Reg calleeReg, Reg argCount) {
+	Value callee = vm->base[calleeReg];
+	if(IS_OBJ(callee)) {
+		switch(OBJ_TYPE(callee)) {
 			case OBJ_BOUND_METHOD: {
-				ObjBoundMethod *bound = AS_BOUND_METHOD(*callee);
-				*callee = bound->receiver;
+				ObjBoundMethod *bound = AS_BOUND_METHOD(callee);
+				vm->base[calleeReg] = bound->receiver;
 				if(bound->method->type == OBJ_CLOSURE)
-					return call(vm, (ObjClosure*)bound->method, callee, argCount);
+					return call(vm, (ObjClosure*)bound->method, calleeReg, argCount);
 				assert(bound->method->type == OBJ_NATIVE);
 				NativeFn native = ((ObjNative*)bound->method)->function;
-				return native(vm, argCount, callee + 1);
+				return native(vm, argCount, vm->base + calleeReg + 1);
 			}
 			case OBJ_CLASS: {
-				ObjClass *klass = AS_CLASS(*callee);
+				ObjClass *klass = AS_CLASS(callee);
 				Value initializer;
 				assert(klass->methods);
 				if(tableGet(klass->methods, OBJ_VAL(vm->initString), &initializer)) {
 					if(IS_NATIVE(initializer)) {
-						*callee = initializer;
+						callee = initializer;
 						goto native;
 					}
 					assert(IS_CLOSURE(initializer));
-					*callee = OBJ_VAL(newInstance(vm, klass, callee));
-					return call(vm, AS_CLOSURE(initializer), callee, argCount);
+					incFrame(vm, 1, vm->base + vm->frames[vm->frameCount-1].c->f->stackUsed + 1, NULL);	// don't overwrite arguments.
+					ObjInstance *ret = newInstance(vm, klass);
+					decFrame(vm);
+					vm->base[calleeReg] = OBJ_VAL(ret);
+					return call(vm, AS_CLOSURE(initializer), calleeReg, argCount);
 				} else if(argCount) {
 					runtimeError(vm, "Expected 0 arguments but got %d.", argCount);
 					return false;
 				}
-				*callee = OBJ_VAL(newInstance(vm, klass, callee));
+				incFrame(vm, 1, vm->base + argCount + 1, NULL);	// don't overwrite arguments.
+				ObjInstance *ret = newInstance(vm, klass);
+				decFrame(vm);
+				vm->base[calleeReg] = OBJ_VAL(ret);
 				return true;
 			}
 			case OBJ_CLOSURE:
-				return call(vm, AS_CLOSURE(*callee), callee, argCount);
+				return call(vm, AS_CLOSURE(callee), calleeReg, argCount);
 native:
 			case OBJ_NATIVE: {
-				NativeFn native = AS_NATIVE(*callee);
-				return native(vm, argCount, callee + 1);
+				NativeFn native = AS_NATIVE(callee);
+				incFrame(vm, argCount, vm->base + calleeReg, NULL);
+				bool ret = native(vm, argCount, vm->base);
+				decFrame(vm);
+				return ret;
 			}
 			default:
 				break;
@@ -257,7 +248,7 @@ native:
 	return false;
 }
 
-static bool bindMethod(VM *vm, ObjInstance *instance, ObjClass *klass, Value name, Value *slot) {
+static bool bindMethod(VM *vm, ObjInstance *instance, ObjClass *klass, Value name, Reg retReg) {
 	Value method;
 	assert(instance);
 	assert(klass->methods);
@@ -273,20 +264,21 @@ static bool bindMethod(VM *vm, ObjInstance *instance, ObjClass *klass, Value nam
 	assert(isObjType(method, OBJ_CLOSURE) || isObjType(method, OBJ_NATIVE));
 
 	ObjBoundMethod *bound = newBoundMethod(vm, OBJ_VAL(instance), method);
-	*slot = (OBJ_VAL(bound));
+	vm->base[retReg] = (OBJ_VAL(bound));
 	return true;
 }
 
-static bool invokeMethod(VM *vm, Value *slot, ObjString *name, Reg argCount) {
+static bool invokeMethod(VM *vm, int16_t instanceReg, ObjString *name, Reg argCount) {
+	Value inst = vm->base[instanceReg];
 	Value method;
-	if(!HAS_PROPERTIES(*slot)) {
+	if(!HAS_PROPERTIES(inst)) {
 		runtimeError(vm, "Only instances have properties.");
 		return false;
 	}
-	ObjInstance *instance = AS_INSTANCE(*slot);
+	ObjInstance *instance = AS_INSTANCE(inst);
 	assert(instance->klass->methods);
-	if((!(IS_ARRAY(*slot) || IS_STRING(*slot))) && (tableGet(instance->fields, OBJ_VAL(name), slot+1))) {
-		return callValue(vm, slot+1, argCount);
+	if((!(IS_ARRAY(inst) || IS_STRING(inst))) && (tableGet(instance->fields, OBJ_VAL(name), vm->base + instanceReg + 1))) {
+		return callValue(vm, instanceReg + 1, argCount);
 	}
 	if(!tableGet(instance->klass->methods, OBJ_VAL(name), &method)) {
 		runtimeError(vm, "Undefined property '%s'.", name->chars);
@@ -294,12 +286,12 @@ static bool invokeMethod(VM *vm, Value *slot, ObjString *name, Reg argCount) {
 	}
 	assert(isObjType(method, OBJ_CLOSURE) || isObjType(method, OBJ_NATIVE));
 
-	slot[1] = OBJ_VAL(instance);
+	vm->base[instanceReg + 1] = OBJ_VAL(instance);
 	if(AS_OBJ(method)->type == OBJ_CLOSURE)
-		return call(vm, AS_CLOSURE(method), slot + 1, argCount);
+		return call(vm, AS_CLOSURE(method), instanceReg + 1, argCount);
 	assert(AS_OBJ(method)->type == OBJ_NATIVE);
 	NativeFn native = AS_NATIVE(method);
-	return native(vm, argCount, slot+2);
+	return native(vm, argCount, vm->base + instanceReg + 2);
 
 }
 
@@ -454,7 +446,10 @@ static InterpretResult run(VM *vm) {
 				Value b = vm->base[RB(bytecode)];
 				Value c = vm->base[RC(bytecode)];
 				if(IS_STRING(b) && IS_STRING(c)) {
-					vm->base[RA(bytecode)] = concatenate(vm, AS_STRING(b), AS_STRING(c), &vm->base[RA(bytecode)]);
+					incFrame(vm, 1, vm->base + frame->c->f->stackUsed, NULL);
+					Value ret = concatenate(vm, AS_STRING(b), AS_STRING(c));
+					decFrame(vm);
+					vm->base[RA(bytecode)] = ret;
 				} else if(IS_NUMBER(b) && IS_NUMBER(c)) {
 					vm->base[RA(bytecode)] = NUMBER_VAL(AS_NUMBER(b) + AS_NUMBER(c));
 				} else {
@@ -525,7 +520,7 @@ OP_JUMP:
 				DISPATCH;
 			TARGET(OP_CALL):	// RA = func/dest reg; RB = retCount(used by OP_CALL when call returns); RC = argCount
 				frame->ip = (intptr_t)ip;
-				if(!callValue(vm, &vm->base[RA(bytecode)], RC(bytecode)))
+				if(!callValue(vm, RA(bytecode), RC(bytecode)))
 					goto exception_unwind;
 				frame = &vm->frames[vm->frameCount-1];
 				ip = (uint32_t*)frame->ip;
@@ -555,7 +550,9 @@ OP_JUMP:
 				closeUpvalues(vm, vm->base + RA(bytecode));
 				DISPATCH;
 			TARGET(OP_CLASS): {
-				ObjClass *klass = newClass(vm, AS_STRING(frame->c->f->chunk.constants->values[RD(bytecode)]), &vm->base[RA(bytecode)]);
+				incFrame(vm, 1, vm->base + frame->c->f->stackUsed + 1, NULL);
+				ObjClass *klass = newClass(vm, AS_STRING(frame->c->f->chunk.constants->values[RD(bytecode)]));
+				decFrame(vm);
 				vm->base[RA(bytecode)] = OBJ_VAL(klass);
 				DISPATCH;
 			}
@@ -568,7 +565,7 @@ OP_JUMP:
 					assert(IS_STRING(name));
 					if((!(IS_ARRAY(v) || IS_STRING(v))) && (tableGet(instance->fields, name, &vm->base[RA(bytecode)]))) {
 						DISPATCH;
-					} else if(bindMethod(vm, instance, instance->klass, name, &vm->base[RA(bytecode)])) {
+					} else if(bindMethod(vm, instance, instance->klass, name, RA(bytecode))) {
 						DISPATCH;
 					}
 					goto exception_unwind;
@@ -596,7 +593,7 @@ OP_JUMP:
 				int16_t ra = ((int16_t)(Reg)(RA(bytecode) + 1))-1;
 				ObjString *name = AS_STRING(vm->base[ra+1]);
 				frame->ip = (intptr_t)ip;
-				if(!invokeMethod(vm, &vm->base[ra], name, RC(bytecode)))
+				if(!invokeMethod(vm, ra, name, RC(bytecode)))
 					goto exception_unwind;
 				frame = &vm->frames[vm->frameCount-1];
 				ip = (uint32_t*)frame->ip;
@@ -622,26 +619,30 @@ OP_JUMP:
 				ObjClass *superclass = AS_CLASS(vm->base[RA(bytecode)]);
 				ObjInstance *instance = AS_INSTANCE(vm->base[rb]);
 				Value name = vm->base[RC(bytecode)];
-				if(!bindMethod(vm, instance, superclass, name, &vm->base[RA(bytecode)]))
+				if(!bindMethod(vm, instance, superclass, name, RA(bytecode)))
 					goto exception_unwind;
 				DISPATCH;
 			}
 			TARGET(OP_NEW_ARRAY):
-				vm->base[RA(bytecode)] = OBJ_VAL(newArray(vm, RD(bytecode), &vm->base[RA(bytecode)]));
+				incFrame(vm, 1, vm->base + RA(bytecode), NULL);
+				Value ret = OBJ_VAL(newArray(vm, RD(bytecode)));
+				decFrame(vm);
+				vm->base[RA(bytecode)] = ret;
 				DISPATCH;
 			TARGET(OP_DUPLICATE_ARRAY): {
-#ifndef NDEBUG
-				ObjArray *t =
-#endif
-					duplicateArray(vm, AS_ARRAY(frame->c->f->chunk.constants->values[RD(bytecode)]), &vm->base[RA(bytecode)]);
-				assert(AS_ARRAY(vm->base[RA(bytecode)]) == t);
+				incFrame(vm, 1, vm->base + RA(bytecode), NULL);
+				ObjArray *t = duplicateArray(vm, AS_ARRAY(frame->c->f->chunk.constants->values[RD(bytecode)]));
+				decFrame(vm);
+				vm->base[RA(bytecode)] = OBJ_VAL(t);
 				DISPATCH;
 			}
 			TARGET(OP_NEW_TABLE):
-				vm->base[RA(bytecode)] = OBJ_VAL(newTable(vm, RD(bytecode), &vm->base[RA(bytecode)]));
+				vm->base[RA(bytecode)] = OBJ_VAL(newTable(vm, RD(bytecode)));
 				DISPATCH;
 			TARGET(OP_DUPLICATE_TABLE): {
-				ObjTable *t = duplicateTable(vm, AS_TABLE(frame->c->f->chunk.constants->values[RD(bytecode)]), &vm->base[RA(bytecode)]);
+				incFrame(vm, 1, vm->base + frame->c->f->stackUsed + 1, NULL);
+				ObjTable *t = duplicateTable(vm, AS_TABLE(frame->c->f->chunk.constants->values[RD(bytecode)]));
+				decFrame(vm);
 				vm->base[RA(bytecode)] = OBJ_VAL(t);
 				DISPATCH;
 			}
@@ -686,7 +687,10 @@ OP_JUMP:
 						runtimeError(vm, "Subscript out of range.");
 						goto exception_unwind;
 					}
-					vm->base[RA(bytecode)] = OBJ_VAL(copyString(s->chars + i, 1, vm, &vm->base[RA(bytecode)]));
+					incFrame(vm, 1, vm->base + frame->c->f->stackUsed + 1, NULL);
+					ObjString *ret = copyString(s->chars + i, 1, vm);
+					decFrame(vm);
+					vm->base[RA(bytecode)] = OBJ_VAL(ret);
 				} else {
 					runtimeError(vm, "Only arrays, tables, and strings can be subscripted.");
 					goto exception_unwind;
@@ -763,13 +767,17 @@ exception_unwind: {
 					fputs("\n", stderr);
 					for(size_t i = err->topFrame; i > 1; i--) {
 						CallFrame *frame = &vm->frames[i-1];
-						ObjFunction *f = frame->c->f;
-						size_t instruction = ip - f->chunk.code - 1;	// We have already advanced ip.
-						fprintf(stderr, "[line %zu] in ", frame->c->f->chunk.lines[instruction]);
-						if(f->name == NULL) {
-							fprintf(stderr, "script\n");
-						} else {
-							fprintf(stderr, "%s()\n", f->name->chars);
+						if(frame->c) {	// In a xan frame.
+							ObjFunction *f = frame->c->f;
+							size_t instruction = ip - f->chunk.code - 1;	// We have already advanced ip.
+							fprintf(stderr, "[line %zu] in ", frame->c->f->chunk.lines[instruction]);
+							if(f->name == NULL) {
+								fprintf(stderr, "script\n");
+							} else {
+								fprintf(stderr, "%s()\n", f->name->chars);
+							}
+						} else {		// In a c frame.
+							fprintf(stderr, "in a c function\n");
 						}
 					}
 					return INTERPRET_RUNTIME_ERROR;
@@ -798,10 +806,10 @@ InterpretResult interpret(VM *vm, const char *source, bool printCode) {
 		return INTERPRET_COMPILE_ERROR;
 
 	assert(vm->stackSize > 0);
-	vm->stack[1] = OBJ_VAL(script);
+	vm->base[1] = OBJ_VAL(script);
 	ObjClosure *cl = newClosure(vm, script);
-	vm->stack[1] = OBJ_VAL(cl);
-	call(vm, cl, &vm->stack[1], 0);
+	vm->base[1] = OBJ_VAL(cl);
+	call(vm, cl, 1, 0);
 
 	return run(vm);
 }

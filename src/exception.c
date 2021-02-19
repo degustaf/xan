@@ -33,7 +33,7 @@ void ExceptionFormattedStr(VM *vm, const char* format, ...) {
 	vsnprintf(buffer, length + 1, format, args2);
 	va_end(args2);
 	
-	exc->msg = OBJ_VAL(takeString(buffer, length, vm, &exc->msg));
+	exc->msg = OBJ_VAL(takeString(buffer, length, vm));
 }
 
 bool ExceptionInit(VM *vm, int argCount, Value *args) {

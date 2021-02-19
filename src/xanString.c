@@ -9,14 +9,14 @@
 #include "object.h"
 #include "table.h"
 
-static ObjString* allocateString(char *chars, size_t length, uint32_t hash, VM *vm, Value *slot) {
+static ObjString* allocateString(char *chars, size_t length, uint32_t hash, VM *vm) {
 	ObjString *string = ALLOCATE_OBJ(vm, ObjString, OBJ_STRING);
 	string->length = length;
 	string->chars = chars;
 	string->hash = hash;
 	string->fields = NULL;
 	string->klass = &stringDef;
-	*slot = OBJ_VAL(string);
+	vm->base[0] = OBJ_VAL(string);
 	tableSet(vm, vm->strings, OBJ_VAL(string), NIL_VAL);
 
 	return string;
@@ -33,17 +33,17 @@ static uint32_t hashString(const char *key, size_t length) {
 	return hash;
 }
 
-ObjString *takeString(char *chars, size_t length, VM *vm, Value *slot) {
+ObjString *takeString(char *chars, size_t length, VM *vm) {
 	uint32_t hash = hashString(chars, length);
 	ObjString *interned = tableFindString(vm->strings, chars, length, hash);
 	if(interned) {
 		FREE_ARRAY(&vm->gc, char, chars, length+1);
 		return interned;
 	}
-	return allocateString(chars, length, hash, vm, slot);
+	return allocateString(chars, length, hash, vm);
 }
 
-ObjString* copyString(const char *chars, size_t length, VM *vm, Value *slot) {
+ObjString* copyString(const char *chars, size_t length, VM *vm) {
 	uint32_t hash = hashString(chars, length);
 	ObjString *interned = tableFindString(vm->strings, chars, length, hash);
 	if(interned) return interned;
@@ -52,7 +52,7 @@ ObjString* copyString(const char *chars, size_t length, VM *vm, Value *slot) {
 	memcpy(heapChars, chars, length);
 	heapChars[length] = '\0';
 
-	return allocateString(heapChars, length, hash, vm, slot);
+	return allocateString(heapChars, length, hash, vm);
 }
 
 static bool stringLength(VM *vm, int argCount, Value *args) {

@@ -20,6 +20,10 @@
 #undef DEBUG_STRESS_GC
 #undef DEBUG_LOG_GC
 
+#ifdef DEBUG_STACK_USAGE
+	#undef COMPUTED_GOTO
+#endif
+
 #define TAGGED_NAN
 
 #define UINT8_COUNT (UINT8_MAX + 1)

@@ -38,15 +38,17 @@ static uint32_t hash(Value v) {
 	return (temp.i & 0xffffffff) ^ (temp.i >> 32);
 }
 
-bool TableInit (VM *vm, int argCount, Value *args) {
+bool TableInit (VM *vm, int argCount, __attribute__((unused)) Value *args) {
 	assert((argCount & 1) == 0);
 
-	ObjTable *t = newTable(vm, argCount, &args[-1]);
-	args[-1] = OBJ_VAL(t);
+	incFrame(vm, 1, vm->base + argCount + 1, NULL);
+	ObjTable *t = newTable(vm, argCount);
+	decFrame(vm);
+	vm->base[-1] = OBJ_VAL(t);
 
 	for(int i = 0; i<argCount; i+=2) {
-		assert(IS_STRING(args[i]));
-		tableSet(vm, t, args[i], args[i+1]);
+		assert(IS_STRING(vm->base[i]));
+		tableSet(vm, t, vm->base[i], vm->base[i+1]);
 	}
 
 	return true;
@@ -78,7 +80,7 @@ static Value* findEntry(Value *entries, size_t capacityMask, Value key) {
 	}
 }
 
-bool tableGet(ObjTable *t, Value key, Value *value) {
+bool tableGet(ObjTable *t, Value key, Value *ret) {
 	if(t->entries == NULL)
 		return false;
 
@@ -86,7 +88,7 @@ bool tableGet(ObjTable *t, Value key, Value *value) {
 	if(IS_NIL(*e))
 		return false;
 
-	*value = VALUE(e);
+	*ret = VALUE(e);
 	return true;
 }
 
@@ -112,7 +114,7 @@ static void adjustCapacity(VM *vm, ObjTable *t, size_t capacityMask) {
 	t->capacityMask = capacityMask;
 }
 
-ObjTable *newTable(VM *vm, size_t count, Value *slot) {
+ObjTable *newTable(VM *vm, size_t count) {
 	ObjTable *t = ALLOCATE_OBJ(vm, ObjTable, OBJ_TABLE);
 	t->count = 0;
 	t->capacityMask = 0;
@@ -121,8 +123,7 @@ ObjTable *newTable(VM *vm, size_t count, Value *slot) {
 	t->fields = NULL;
 	if(count) {
 		size_t capacityMask = round_up_pow_2(2 * count) - 1;
-		assert(slot);
-		*slot = OBJ_VAL(t);
+		vm->base[0] = OBJ_VAL(t);
 		adjustCapacity(vm, t, capacityMask);
 	}
 
@@ -139,7 +140,9 @@ static bool TableNew(VM *vm, int argCount, Value *args) {
 		return false;
 	}
 
-	args[-1] = OBJ_VAL(newTable(vm, (size_t)(AS_NUMBER(args[0])), &args[-1]));
+	incFrame(vm, 1, vm->base + argCount + 1, NULL);
+	args[-1] = OBJ_VAL(newTable(vm, (size_t)(AS_NUMBER(args[0]))));
+	decFrame(vm);
 	return true;
 }
 
@@ -231,8 +234,8 @@ void fprintTable(FILE *restrict stream, ObjTable *t) {
 	fprintf(stream, "}");
 }
 
-ObjTable *duplicateTable(VM *vm, ObjTable *source, Value *slot) {
-	ObjTable *dest = newTable(vm, (source->capacityMask+1)/2, slot);
+ObjTable *duplicateTable(VM *vm, ObjTable *source) {
+	ObjTable *dest = newTable(vm, (source->capacityMask+1)/2);
 	tableAddAll(vm, source, dest);
 	return dest;
 }
