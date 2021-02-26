@@ -1158,9 +1158,9 @@ static void table(Parser *p, expressionDescription *e) {
 
 			if(ExprIsConstant(&key) && (key.type != NIL_EXTYPE) && (key.type == STRING_EXTYPE || key.type == NUMBER_EXTYPE)) {
 				if(t == NULL) {
-					incFrame(p->vm, 1, p->vm->base + 1, NULL);
+					incCFrame(p->vm, 1, 3);
 					t = newTable(p->vm, count);
-					decFrame(p->vm);
+					decCFrame(p->vm);
 					uint16_t constIdx = makeConstant(p, OBJ_VAL(t));
 					currentChunk(p->currentCompiler)->code[ins_location] =
 						OP_AD(OP_DUPLICATE_TABLE, nextReg - 1, constIdx);

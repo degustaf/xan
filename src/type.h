@@ -9,8 +9,7 @@
 #include <stdint.h>
 #include <sys/types.h>
 
-#define FRAMES_MAX 256
-#define BASE_STACK_SIZE 16
+#define BASE_STACK_SIZE 1024
 #define TRY_MAX 16
 
 #define OBJ_BUILDER(X, SEP) \
@@ -57,6 +56,7 @@ typedef union {
 	uint64_t u;
 	double number;
 	Obj *obj;
+	intptr_t ip;
 } Value;
 XAN_STATIC_ASSERT(sizeof(Value) == sizeof(uint64_t));
 #else /* TAGGED_NAN */
@@ -73,6 +73,7 @@ typedef struct {
 		bool boolean;
 		double number;
 		Obj *obj;
+		intptr_t ip;
 	} as;
 } Value;
 #endif /* TAGGED_NAN */
@@ -136,6 +137,7 @@ typedef struct {
 	Obj obj;
 	ObjFunction *f;
 	ObjUpvalue **upvalues;
+	uint32_t *ip;
 	size_t uvCount;
 } ObjClosure;
 
@@ -192,11 +194,11 @@ typedef struct ClassCompiler {
 	ObjTable *methods;
 } ClassCompiler;
 
-struct sCallFrame {
-	ObjClosure *c;
-	intptr_t ip;
-};
-typedef struct sCallFrame CallFrame;
+// struct sCallFrame {
+// 	// ObjClosure *c;
+// 	intptr_t ip;
+// };
+// typedef struct sCallFrame CallFrame;
 
 struct try_frame {
 	size_t frame;
@@ -217,10 +219,7 @@ typedef struct {
 
 struct sVM {
 	GarbageCollector gc;
-	CallFrame *frames;
 	struct try_frame _try[TRY_MAX];
-	size_t frameCount;
-	size_t frameSize;
 	size_t tryCount;
 	Value *stack;
 	Value *stackTop;

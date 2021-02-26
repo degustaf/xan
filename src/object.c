@@ -38,6 +38,7 @@ ObjClosure *newClosure(VM *vm, ObjFunction *f) {
 	cl->f = f;
 	cl->upvalues = uvs;
 	cl->uvCount = f->uvCount;
+	cl->ip = f->chunk.code;
 	return cl;
 }
 
@@ -70,9 +71,6 @@ void defineNative(VM *vm, ObjTable *t, const NativeDef *f) {
 }
 
 void defineNativeClass(VM *vm, ObjTable *t, ObjClass *klass) {
-	assert(vm->frameCount + 1 < vm->frameSize);
-	// This prevents a reallocation of vm->frames when incFrame is called.
-
 	klass->name = copyString(klass->cname, strlen(klass->cname), vm);
 	writeBarrier(vm, klass);
 
@@ -83,7 +81,7 @@ void defineNativeClass(VM *vm, ObjTable *t, ObjClass *klass) {
 
 	vm->base[0] = OBJ_VAL(klass);
 
-	incFrame(vm, 2, vm->base + 1, NULL);
+	incCFrame(vm, 2, 3);
 	klass->methods = newTable(vm, 0);
 	writeBarrier(vm, klass);
 	assert(klass->methods);
@@ -93,7 +91,7 @@ void defineNativeClass(VM *vm, ObjTable *t, ObjClass *klass) {
 		if(AS_STRING(vm->base[0]) == vm->newString)
 			klass->newFn = AS_OBJ(vm->base[1]);
 	}
-	decFrame(vm);
+	decCFrame(vm);
 
 	tableSet(vm, t, OBJ_VAL(klass->name), OBJ_VAL(klass));
 }
@@ -110,20 +108,17 @@ ObjModule * newModule(VM *vm, ObjString *name) {
 }
 
 ObjModule *defineNativeModule(VM *vm, ModuleDef *def) {
-	assert(vm->frameCount + 2 < vm->frameSize);
-	// This prevents a reallocation of vm->frames when incFrame is called, or when defineNativeClass is called.
-
 	ObjString *name = copyString(def->name, strlen(def->name), vm);
 	ObjModule *ret = newModule(vm, name);
 	vm->base[0] = OBJ_VAL(ret);		// For GC.
 
-	incFrame(vm, 1, vm->base + 1, NULL);
+	incCFrame(vm, 1, 3);
 	for(ObjClass **c = def->classes; *c; c++)
 		defineNativeClass(vm, ret->items, *c);
 	assert(def->methods);
 	for(NativeDef *m = def->methods; m->name; m++)
 		defineNative(vm, ret->items, m);
-	decFrame(vm);
+	decCFrame(vm);
 
 	return ret;
 }

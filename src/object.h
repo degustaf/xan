@@ -38,6 +38,7 @@
 	#define BOOL_VAL(value)	  ((value) ? TRUE_VAL : FALSE_VAL)
 	#define NUMBER_VAL(value) ((Value){.number = value})
 	#define OBJ_VAL(obj)	  ((Value){ .u = (SIGN_BIT | QNAN | (uint64_t)(uintptr_t)(obj))})
+	#define IP_VAL(ptr)		  ((Value){ .ip = (ptr)})
 
 	#define IS_BOOL(value)	  (((value).u | TAG_TRUE) == TRUE_VAL.u)
 	#define IS_NIL(value)	  ((value).u == NIL_VAL.u)
@@ -47,11 +48,13 @@
 	#define AS_BOOL(value)	  ((value).u == TRUE_VAL.u)
 	#define AS_NUMBER(value)  ((value).number)
 	#define AS_OBJ(value)	  ((Obj*)(uintptr_t)(((value).u) & ~(SIGN_BIT | QNAN)))
+	#define AS_IP(value)	  ((value).ip)
 #else /* TAGGED_NAN */
 	#define NIL_VAL           ((Value){ VAL_NIL, { .number = 0 } })
 	#define BOOL_VAL(value)   ((Value){ VAL_BOOL, { .boolean = value } })
 	#define NUMBER_VAL(value) ((Value){ VAL_NUMBER, { .number = value } })
 	#define OBJ_VAL(object)   ((Value){ VAL_OBJ, { .obj = (Obj*)object } })
+	#define IP_VAL(ptr)		  ((Value){ VAL_NIL, { .ip = (ptr)}})
 
 	#define IS_BOOL(value)    ((value).type == VAL_BOOL)
 	#define IS_NIL(value)     ((value).type == VAL_NIL)
@@ -61,6 +64,7 @@
 	#define AS_BOOL(value)    ((value).as.boolean)
 	#define AS_NUMBER(value)  ((value).as.number)
 	#define AS_OBJ(value)	  ((value).as.obj)
+	#define AS_IP(value)	  ((value).as.ip)
 #endif /* TAGGED_NAN */
 
 static inline bool isObjType(Value v, ObjType t) {

@@ -41,15 +41,16 @@ static uint32_t hash(Value v) {
 bool TableInit (VM *vm, int argCount, __attribute__((unused)) Value *args) {
 	assert((argCount & 1) == 0);
 
-	incFrame(vm, 1, vm->base + argCount + 1, NULL);
+	incCFrame(vm, 1, argCount + 3);
 	ObjTable *t = newTable(vm, argCount);
-	decFrame(vm);
-	vm->base[-3] = OBJ_VAL(t);
+	decCFrame(vm);
+	vm->base[-1] = OBJ_VAL(t);
 
 	for(int i = 0; i<argCount; i+=2) {
 		assert(IS_STRING(vm->base[i]));
 		tableSet(vm, t, vm->base[i], vm->base[i+1]);
 	}
+	vm->base[0] = vm->base[-1];
 
 	return true;
 }
@@ -123,6 +124,8 @@ ObjTable *newTable(VM *vm, size_t count) {
 	t->fields = NULL;
 	if(count) {
 		size_t capacityMask = round_up_pow_2(2 * count) - 1;
+		assert(vm->base >= vm->stack);
+		assert(vm->base < vm->stackTop);
 		vm->base[0] = OBJ_VAL(t);
 		adjustCapacity(vm, t, capacityMask);
 	}
@@ -140,9 +143,9 @@ static bool TableNew(VM *vm, int argCount, Value *args) {
 		return false;
 	}
 
-	incFrame(vm, 1, vm->base + argCount + 1, NULL);
-	args[-3] = OBJ_VAL(newTable(vm, (size_t)(AS_NUMBER(args[0]))));
-	decFrame(vm);
+	incCFrame(vm, 1, argCount + 3);
+	args[0] = OBJ_VAL(newTable(vm, (size_t)(AS_NUMBER(args[0]))));
+	decCFrame(vm);
 	return true;
 }
 

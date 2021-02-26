@@ -2,10 +2,11 @@
 
 #include <stdarg.h>
 
+#include "chunk.h"
 #include "class.h"
 #include "memory.h"
 
-static bool ExceptionNew(VM *vm, int argCount, Value *args) {
+static bool ExceptionNew(VM *vm, int argCount, __attribute__((unused)) Value *args) {
 	if(argCount > 0) {
 		ExceptionFormattedStr(vm, "Method 'new' of class 'exception' expected 0 arguments but got %d.", argCount);
 		return false;
@@ -14,15 +15,17 @@ static bool ExceptionNew(VM *vm, int argCount, Value *args) {
 	exc->klass = NULL;
 	exc->fields = NULL;
 	exc->msg = NIL_VAL;
-	exc->topFrame = vm->frameCount;
-	args[-3] = OBJ_VAL(exc);
+	exc->topBase = 0;
+	vm->base[0] = OBJ_VAL(exc);
 	return true;
 }
 
 void ExceptionFormattedStr(VM *vm, const char* format, ...) {
 	Value args[5];
+	incCFrame(vm, 1, 3);
 	ExceptionNew(vm, 0, args + 3);
-	ObjException *exc = AS_EXCEPTION(args[0]);
+	ObjException *exc = AS_EXCEPTION(vm->base[0]);
+	decCFrame(vm);
 	vm->exception = OBJ_VAL(exc);
 	va_list args1, args2;
 	va_start(args1, format);
@@ -34,6 +37,7 @@ void ExceptionFormattedStr(VM *vm, const char* format, ...) {
 	va_end(args2);
 	
 	exc->msg = OBJ_VAL(takeString(buffer, length, vm));
+	exc->topBase = vm->base - vm->stack;
 }
 
 bool ExceptionInit(VM *vm, int argCount, Value *args) {
@@ -41,9 +45,14 @@ bool ExceptionInit(VM *vm, int argCount, Value *args) {
 		ExceptionFormattedStr(vm, "Method 'init' of class 'exception' expected 1 argument but got %d.", argCount);
 		return false;
 	}
+	incCFrame(vm, 1, argCount + 3);
 	ExceptionNew(vm, 0, args);
-	ObjException *ret = AS_EXCEPTION(args[-3]);
-	ret->msg = args[0];
+	ObjException *ret = AS_EXCEPTION(vm->base[0]);
+	decCFrame(vm);
+	ret->topBase = (vm->base - (IS_NIL(vm->base[-3]) ? AS_IP(vm->base[-2]) :
+			(RA(*((uint32_t*)(AS_IP(vm->base[-2]))- 1)) + 3))) - vm->stack;
+	ret->msg = vm->base[0];
+	vm->base[0] = OBJ_VAL(ret);
 
 	return true;
 }

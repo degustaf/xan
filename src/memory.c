@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <stdlib.h>
 
+#include "chunk.h"
 #include "object.h"
 #include "table.h"
 #include "exception.h"
@@ -66,6 +67,7 @@ static void markRoots(VM *vm) {
 #ifdef DEBUG_LOG_GC
 	printf("stackTop = %ld (%p)\n", vm->stackTop - vm->stack, (void*)vm->stackTop);
 #endif /* DEBUG_LOG_GC */
+	/*
 	for(Value *slot = vm->stack; slot < vm->stackTop; slot++) {
 #ifdef DEBUG_LOG_GC
 		printf("stack[%ld] (%p) is ", slot - vm->stack, (void*)slot);
@@ -80,12 +82,30 @@ static void markRoots(VM *vm) {
 #endif
 		markValue(&vm->gc, *slot);
 	}
+	*/
+
+	Value *base = vm->base;
+	for(Value *slot = vm->stackTop - 1; slot >= vm->stack; slot--) {
+		for(;(slot >= base - 1) && (slot >= vm->stack); slot--)		// TODO: remove reference to vm->stack. Once frames are included in the stack, this should be unnecesary.
+			markValue(&vm->gc, *slot);
+		if(slot <= vm->stack)										// TODO: This should be removable once frames are on stack.
+			break;
+		markValue(&vm->gc, *--slot);	// mark base[-3]
+		if(slot < vm->stack)
+			break;
+		assert(base >= vm->stack + 3);
+		if(IS_NIL(*slot)) {
+			base -= AS_IP(base[-2]);
+		} else {
+			uint32_t *ip = (uint32_t*)(AS_IP(base[-2]));
+			uint32_t bytecode = *(ip - 1);
+			Reg ra = RA(bytecode) + 1;
+			base -= ra + 2;
+		}
+	}
 	markObject(&vm->gc, (Obj*)vm->initString);
 	markObject(&vm->gc, (Obj*)vm->newString);
 	markValue(&vm->gc, vm->exception);
-
-	for(size_t i=0; i<vm->frameCount; i++)
-		markObject(&vm->gc, (Obj*)vm->frames[i].c);
 
 	for(ObjUpvalue *u = vm->openUpvalues; u != NULL; u = u->next)
 		markObject(&vm->gc, (Obj*)u);

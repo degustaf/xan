@@ -95,15 +95,15 @@ $(PATHB)/%.o: $(PATHC)/%.c | $(PATHB) $(PATHD)
 	$(COMPILE) -c $< -o $@
 	$(POSTCOMPILE)
 
-$(PATHLB)/%.o: $(PATHS)/%.c | $(PATHLB) $(PATHD)
-	$(COMPILE) -c $< -o $@
-	$(POSTCOMPILE)
-
-ifeq ($(CC), "gcc")
+ifeq ($(CC),gcc)
 $(PATHLB)/vm.o: $(PATHS)/vm.c | $(PATHLB) $(PATHD)
 	$(CC) $(CFLAGS) -fno-gcse -fno-crossjumping -MT $@ -MP -MMD -MF $(PATHD)/vm.Td -c $< -o $@
 	@mv -f $(PATHD)/vm.Td $(PATHD)/vm.d && touch $@
 endif
+
+$(PATHLB)/%.o: $(PATHS)/%.c | $(PATHLB) $(PATHD)
+	$(COMPILE) -c $< -o $@
+	$(POSTCOMPILE)
 
 $(PATHUB)/%.o: $(PATHU)/%.c | $(PATHUB) $(PATHD)
 	$(COMPILE) -c $< -o $@

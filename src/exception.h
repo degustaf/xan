@@ -8,7 +8,7 @@ extern ObjClass exceptionDef;
 typedef struct {
 	INSTANCE_FIELDS;
 	Value msg;
-	size_t topFrame;
+	size_t topBase;
 } ObjException;
 
 void ExceptionFormattedStr(VM *vm, const char* format, ...);

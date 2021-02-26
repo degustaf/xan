@@ -85,9 +85,6 @@ class NBodySystem {
 				var dz = this.bodies[i].z - this.bodies[j].z;
 
 				var distance = sqrt(dx * dx + dy * dy + dz * dz);
-				// print(i);
-				// print(j);
-				// print(distance);
 				var mag = dt / (distance * distance * distance);
 
 				this.bodies[i].vx = this.bodies[i].vx - dx * this.bodies[j].mass * mag;
@@ -111,19 +108,11 @@ class NBodySystem {
 		var e = 0.0;
 
 		for(var i = 0; i < this.bodies.count(); i = i + 1) {
-			// print(this.bodies[i].mass);
-			// print(this.bodies[i].vx);
-			// print(this.bodies[i].x);
-			// print(this.bodies[i].vy);
-			// print(this.bodies[i].y);
-			// print(this.bodies[i].vz);
-			// print(this.bodies[i].z);
 			e = e + 0.5 * this.bodies[i].mass * (
 				this.bodies[i].vx * this.bodies[i].vx +
 				this.bodies[i].vy * this.bodies[i].vy +
 				this.bodies[i].vz * this.bodies[i].vz
 			);
-			// print(e);
 			for(var j = i + 1; j < this.bodies.count(); j = j + 1) {
 				var dx = this.bodies[i].x - this.bodies[j].x;
 				var dy = this.bodies[i].y - this.bodies[j].y;
@@ -131,8 +120,6 @@ class NBodySystem {
 
 				var distance = sqrt(dx * dx + dy * dy + dz * dz);
 				e = e - (this.bodies[i].mass * this.bodies[j].mass) / distance;
-				// print(distance);
-				// print(e);
 			}
 		}
 

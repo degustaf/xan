@@ -83,7 +83,7 @@ static void InstructionAJ(const char *name, __attribute__((unused)) Chunk *chunk
 
 void disassembleInstruction(Chunk* chunk, size_t offset) {
 	uint32_t bytecode = chunk->code[offset];
-	printf("%04zu %08x ", offset, bytecode);
+	printf("%p %04zu %08x ",chunk->code + offset, offset, bytecode);
 
 	if(offset > 0 && chunk->lines[offset] == chunk->lines[offset - 1]) {
 		printf("   | ");
@@ -146,7 +146,7 @@ static void dumpValueArray(Value *valueArray, Value *ArrayTop, size_t count) {
 void dumpStack(VM *vm, size_t count) {
 	printf("stack = ");
 	dumpValueArray(vm->stack, vm->stackLast, count);
-	printf("frame[%zu] = stack[%zu] = ", vm->frameCount - 1, (size_t)(vm->base - vm->stack));
+	printf("stack[%zu] = ", (size_t)(vm->base - vm->stack));
 	dumpValueArray(vm->base, vm->stackLast, count);
 }
 
