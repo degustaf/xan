@@ -1,0 +1,41 @@
+class Tree {
+  init(item, depth) {
+    this.item = item;
+    this.depth = depth;
+    if (depth > 0) {
+      var item2 = item + item;
+      depth = depth - 1;
+      this.left = Tree(item2 - 1, depth);
+      this.right = Tree(item2, depth);
+    } else {
+      this.left = nil;
+      this.right = nil;
+    }
+  }
+
+  check() {
+    if (this.left == nil) {
+      return this.item;
+    }
+
+    return this.item + this.left.check() - this.right.check();
+  }
+}
+
+// var stretchDepth = 8;
+var iterations = 1;
+var d = 0;
+
+while (d < 7) {
+  iterations = iterations * 2;
+  d = d + 1;
+}
+
+
+for(var depth = 4; depth < 8; depth = depth + 2) {
+  var check = 0;
+  for(var i=0; i <= iterations; i = i + 1)
+    check = check + Tree(i, depth).check() + Tree(-i, depth).check();
+  iterations = iterations / 4;
+}
+print("Okay");	// expect: Okay

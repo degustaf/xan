@@ -634,7 +634,10 @@ OP_JUMP:
 				DISPATCH;
 			}
 			TARGET(OP_NEW_TABLE):
-				vm->base[RA(bytecode)] = OBJ_VAL(newTable(vm, RD(bytecode)));
+				incCFrame(vm, 1, CURRENT_FUNCTION->stackUsed + 1);
+				ObjTable *t = newTable(vm, RD(bytecode));
+				decCFrame(vm);
+				vm->base[RA(bytecode)] = OBJ_VAL(t);
 				DISPATCH;
 			TARGET(OP_DUPLICATE_TABLE): {
 				ObjTable *src = AS_TABLE(CURRENT_FUNCTION->chunk.constants->values[RD(bytecode)]);

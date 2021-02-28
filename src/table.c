@@ -82,8 +82,7 @@ static Value* findEntry(Value *entries, size_t capacityMask, Value key) {
 }
 
 bool tableGet(ObjTable *t, Value key, Value *ret) {
-	if(t->entries == NULL)
-		return false;
+	assert(t->entries);
 
 	Value *e = findEntry(t->entries, t->capacityMask, key);
 	if(IS_NIL(*e))
@@ -122,13 +121,12 @@ ObjTable *newTable(VM *vm, size_t count) {
 	t->entries = NULL;
 	t->klass = NULL;
 	t->fields = NULL;
-	if(count) {
-		size_t capacityMask = round_up_pow_2(2 * count) - 1;
-		assert(vm->base >= vm->stack);
-		assert(vm->base < vm->stackTop);
-		vm->base[0] = OBJ_VAL(t);
-		adjustCapacity(vm, t, capacityMask);
-	}
+	if(count == 0) count++;
+	size_t capacityMask = round_up_pow_2(2 * count) - 1;
+	assert(vm->base >= vm->stack);
+	assert(vm->base < vm->stackTop);
+	vm->base[0] = OBJ_VAL(t);
+	adjustCapacity(vm, t, capacityMask);
 
 	return t;
 }
@@ -193,8 +191,7 @@ void tableAddAll(VM *vm, ObjTable *from, ObjTable *to) {
 }
 
 ObjString *tableFindString(ObjTable *t, const char *chars, size_t length, uint32_t hash) {
-	if(t->entries == NULL)
-		return NULL;
+	assert(t->entries);
 
 	uint32_t index = hash & (t->capacityMask - 1);	// Even, i.e. key
 

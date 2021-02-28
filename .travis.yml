@@ -26,6 +26,8 @@ jobs:
         - compiler: gcc
           arch: ppc64le
           env: ARCH="-m32"
+        - os: osx
+          compiler: gcc
     include:
         - arch: arm64
           os: linux

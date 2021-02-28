@@ -70,37 +70,44 @@ class NBodySystem {
 		var py = 0.0;
 		var pz = 0.0;
 		for(var i = 0; i < this.bodies.count(); i = i + 1) {
-			px = px + this.bodies[i].vx * this.bodies[i].mass;
-			py = py + this.bodies[i].vy * this.bodies[i].mass;
-			pz = pz + this.bodies[i].vz * this.bodies[i].mass;
+			var currentBody = this.bodies[i];
+			var currentBodyMass = currentBody.mass;
+			px = px + currentBody.vx * currentBodyMass;
+			py = py + currentBody.vy * currentBodyMass;
+			pz = pz + currentBody.vz * currentBodyMass;
 		}
 		this.bodies[0].offsetMomentum(px, py, pz);
 	}
 
 	advance(dt) {
 		for(var i = 0; i < this.bodies.count(); i = i + 1) {
+			var body_i = this.bodies[i];
+			var body_i_mass = body_i.mass;
 			for(var j = i + 1; j < this.bodies.count(); j = j + 1) {
-				var dx = this.bodies[i].x - this.bodies[j].x;
-				var dy = this.bodies[i].y - this.bodies[j].y;
-				var dz = this.bodies[i].z - this.bodies[j].z;
+				var body_j = this.bodies[j];
+				var body_j_mass = body_j.mass;
+				var dx = body_i.x - body_j.x;
+				var dy = body_i.y - body_j.y;
+				var dz = body_i.z - body_j.z;
 
 				var distance = sqrt(dx * dx + dy * dy + dz * dz);
 				var mag = dt / (distance * distance * distance);
 
-				this.bodies[i].vx = this.bodies[i].vx - dx * this.bodies[j].mass * mag;
-				this.bodies[i].vy = this.bodies[i].vy - dy * this.bodies[j].mass * mag;
-				this.bodies[i].vz = this.bodies[i].vz - dz * this.bodies[j].mass * mag;
+				body_i.vx = body_i.vx - dx * body_j_mass * mag;
+				body_i.vy = body_i.vy - dy * body_j_mass * mag;
+				body_i.vz = body_i.vz - dz * body_j_mass * mag;
 
-				this.bodies[j].vx = this.bodies[j].vx + dx * this.bodies[i].mass * mag;
-				this.bodies[j].vy = this.bodies[j].vy + dy * this.bodies[i].mass * mag;
-				this.bodies[j].vz = this.bodies[j].vz + dz * this.bodies[i].mass * mag;
+				body_j.vx = body_j.vx + dx * body_i_mass * mag;
+				body_j.vy = body_j.vy + dy * body_i_mass * mag;
+				body_j.vz = body_j.vz + dz * body_i_mass * mag;
 			}
 		}
 
 		for(var i = 0; i < this.bodies.count(); i = i + 1) {
-			this.bodies[i].x = this.bodies[i].x + dt * this.bodies[i].vx;
-			this.bodies[i].y = this.bodies[i].y + dt * this.bodies[i].vy;
-			this.bodies[i].z = this.bodies[i].z + dt * this.bodies[i].vz;
+			var body_i = this.bodies[i];
+			body_i.x = body_i.x + dt * body_i.vx;
+			body_i.y = body_i.y + dt * body_i.vy;
+			body_i.z = body_i.z + dt * body_i.vz;
 		}
 	}
 
@@ -108,18 +115,20 @@ class NBodySystem {
 		var e = 0.0;
 
 		for(var i = 0; i < this.bodies.count(); i = i + 1) {
-			e = e + 0.5 * this.bodies[i].mass * (
-				this.bodies[i].vx * this.bodies[i].vx +
-				this.bodies[i].vy * this.bodies[i].vy +
-				this.bodies[i].vz * this.bodies[i].vz
+			var body_i = this.bodies[i];
+			e = e + 0.5 * body_i.mass * (
+				body_i.vx * body_i.vx +
+				body_i.vy * body_i.vy +
+				body_i.vz * body_i.vz
 			);
 			for(var j = i + 1; j < this.bodies.count(); j = j + 1) {
-				var dx = this.bodies[i].x - this.bodies[j].x;
-				var dy = this.bodies[i].y - this.bodies[j].y;
-				var dz = this.bodies[i].z - this.bodies[j].z;
+				var body_j = this.bodies[j];
+				var dx = body_i.x - body_j.x;
+				var dy = body_i.y - body_j.y;
+				var dz = body_i.z - body_j.z;
 
 				var distance = sqrt(dx * dx + dy * dy + dz * dz);
-				e = e - (this.bodies[i].mass * this.bodies[j].mass) / distance;
+				e = e - (body_i.mass * body_j.mass) / distance;
 			}
 		}
 

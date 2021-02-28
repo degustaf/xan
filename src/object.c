@@ -128,7 +128,9 @@ ObjInstance *newInstance(VM *vm, ObjClass *klass) {
 	o->klass = klass;
 	o->fields = NULL;
 	vm->base[0] = OBJ_VAL(o);
+	incCFrame(vm, 1, 3);
 	o->fields = newTable(vm, 0);
+	decCFrame(vm);
 	writeBarrier(vm, o);
 	return o;
 }
