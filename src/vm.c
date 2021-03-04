@@ -316,6 +316,7 @@ static void closeUpvalues(VM *vm, Value *last) {
 static void defineMethod(VM *vm, Value ra, Value rb, Value rc) {
 	assert(IS_CLASS(ra));
 	assert(IS_STRING(rb));
+	assert(IS_CLOSURE(rc));
 	ObjClass *klass = AS_CLASS(ra);
 	ObjString *name = AS_STRING(rb);
 	assert(klass->methods);
@@ -347,6 +348,16 @@ static void defineMethod(VM *vm, Value ra, Value rb, Value rc) {
 	do { \
 		Value b = vm->base[RB(bytecode)]; \
 		Value c = vm->base[RC(bytecode)]; \
+		if(!IS_NUMBER(b) || !IS_NUMBER(c)) { \
+			runtimeError(vm, "Operands must be numbers."); \
+			goto exception_unwind; \
+		} \
+		vm->base[RA(bytecode)] = valueType(AS_NUMBER(b) op AS_NUMBER(c)); \
+	} while(false)
+#define BINARY_OPVK(valueType, op) \
+	do { \
+		Value b = vm->base[RB(bytecode)]; \
+		Value c = CURRENT_FUNCTION->chunk.constants->values[RC(bytecode)]; \
 		if(!IS_NUMBER(b) || !IS_NUMBER(c)) { \
 			runtimeError(vm, "Operands must be numbers."); \
 			goto exception_unwind; \
@@ -466,6 +477,35 @@ static InterpretResult run(VM *vm) {
 				vm->base[RA(bytecode)] = NUMBER_VAL(fmod(AS_NUMBER(b), AS_NUMBER(c)));
 				DISPATCH;
 			}
+			TARGET(OP_ADDVK): {
+				Value b = vm->base[RB(bytecode)];
+				Value c = CURRENT_FUNCTION->chunk.constants->values[RC(bytecode)]; \
+				if(IS_STRING(b) && IS_STRING(c)) {
+					incCFrame(vm, 1, CURRENT_FUNCTION->stackUsed);
+					Value ret = concatenate(vm, AS_STRING(b), AS_STRING(c));
+					decCFrame(vm);
+					vm->base[RA(bytecode)] = ret;
+				} else if(IS_NUMBER(b) && IS_NUMBER(c)) {
+					vm->base[RA(bytecode)] = NUMBER_VAL(AS_NUMBER(b) + AS_NUMBER(c));
+				} else {
+					runtimeError(vm, "Operands must be two numbers or two strings.");
+					goto exception_unwind;
+				}
+				DISPATCH;
+			}
+			TARGET(OP_SUBVK):	  BINARY_OPVK(NUMBER_VAL, -); DISPATCH;
+			TARGET(OP_MULVK):	  BINARY_OPVK(NUMBER_VAL, *); DISPATCH;
+			TARGET(OP_DIVVK):	  BINARY_OPVK(NUMBER_VAL, /); DISPATCH;
+			TARGET(OP_MODVK): {
+				Value b = vm->base[RB(bytecode)];
+				Value c = CURRENT_FUNCTION->chunk.constants->values[RC(bytecode)]; \
+				if(!IS_NUMBER(b) || !IS_NUMBER(c)) {
+					runtimeError(vm, "Operands must be numbers.");
+					goto exception_unwind;
+				}
+				vm->base[RA(bytecode)] = NUMBER_VAL(fmod(AS_NUMBER(b), AS_NUMBER(c)));
+				DISPATCH;
+			}
 			TARGET(OP_RETURN): {
 				if(vm->base == vm->stack + 3)
 					return INTERPRET_OK;
@@ -545,7 +585,7 @@ OP_JUMP:
 				closeUpvalues(vm, vm->base + RA(bytecode));
 				DISPATCH;
 			TARGET(OP_CLASS): {
-				ObjString *name = AS_STRING(CURRENT_FUNCTION->chunk.constants->values[RD(bytecode)]);
+				ObjString *name = READ_STRING();
 				incCFrame(vm, 1, CURRENT_FUNCTION->stackUsed + 1);
 				ObjClass *klass = newClass(vm, name);
 				decCFrame(vm);
@@ -576,6 +616,39 @@ OP_JUMP:
 				if(HAS_PROPERTIES(v)) {
 					ObjInstance *instance = AS_INSTANCE(v);
 					Value name = vm->base[RC(bytecode)];
+					assert(IS_STRING(name));
+					if(!(IS_ARRAY(v) || IS_STRING(v))) {
+						tableSet(vm, instance->fields, name, vm->base[RA(bytecode)]);
+						DISPATCH;
+					}
+				}
+				runtimeError(vm, "Only instances have fields.");
+				goto exception_unwind;
+			}
+			TARGET(OP_GET_PROPERTYK): {	// RA = dest reg; RB = object reg; RC = property in Constants
+				int16_t rb = ((int16_t)(Reg)(RB(bytecode) + 1))-1;
+				Value v = vm->base[rb];
+				if(HAS_PROPERTIES(v)) {
+					ObjInstance *instance = AS_INSTANCE(v);
+					Value name = CURRENT_FUNCTION->chunk.constants->values[RC(bytecode)];
+					assert(IS_STRING(name));
+					if((!(IS_ARRAY(v) || IS_STRING(v))) && (tableGet(instance->fields, name, &vm->base[RA(bytecode)]))) {
+						DISPATCH;
+					} else if(bindMethod(vm, instance, instance->klass, name, RA(bytecode))) {
+						DISPATCH;
+					}
+					goto exception_unwind;
+				} else {
+					runtimeError(vm, "Only instances have properties.");
+					goto exception_unwind;
+				}
+			}
+			TARGET(OP_SET_PROPERTYK): {
+				int16_t rb = ((int16_t)(Reg)(RB(bytecode) + 1))-1;
+				Value v = vm->base[rb];
+				if(HAS_PROPERTIES(v)) {
+					ObjInstance *instance = AS_INSTANCE(v);
+					Value name = CURRENT_FUNCTION->chunk.constants->values[RC(bytecode)];
 					assert(IS_STRING(name));
 					if(!(IS_ARRAY(v) || IS_STRING(v))) {
 						tableSet(vm, instance->fields, name, vm->base[RA(bytecode)]);

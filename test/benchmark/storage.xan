@@ -24,5 +24,7 @@ fun local_tree_depth(depth, random) {
 	}
 }
 
-local_tree_depth(7, rand);
-print(count);	// expect: 5461
+for(var i=0; i<1000; i = i + 1) {
+	local_tree_depth(7, rand);
+	print(count);	// expect: 5461
+}

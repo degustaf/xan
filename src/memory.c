@@ -42,9 +42,8 @@ static void markObject(GarbageCollector *gc, Obj *o) {
 }
 
 void markValue(GarbageCollector *gc, Value v) {
-	if(!IS_OBJ(v))
-		return;
-	markObject(gc, AS_OBJ(v));
+	if(IS_OBJ(v))
+		markObject(gc, AS_OBJ(v));
 }
 
 static void markArray(GarbageCollector *gc, ObjArray *array) {

@@ -69,7 +69,7 @@ typedef struct {
 	{
 		struct {
 			size_t info;
-			size_t aux;
+			uint32_t aux;
 		} s;
 		struct {
 			Reg r;
@@ -344,10 +344,15 @@ static void exprDischarge(Parser *p, expressionDescription *e) {
 			return;
 		case INDEXED_EXTYPE: 
 		case SUBSCRIPT_EXTYPE: {
-			Reg rkey = e->u.s.aux;
-			regFree(p->currentCompiler, rkey);
-			regFree(p->currentCompiler, (Reg)e->u.s.info);
-			e->u.s.info = emit_ABC(p, e->type == INDEXED_EXTYPE ? OP_GET_PROPERTY : OP_GET_SUBSCRIPT, 0, (Reg)e->u.s.info, rkey);
+			int rkey = e->u.s.aux;
+			if((rkey < 0) && (e->type == INDEXED_EXTYPE)) {
+				regFree(p->currentCompiler, (Reg)e->u.s.info);
+				e->u.s.info = emit_ABC(p, OP_GET_PROPERTYK, 0, (Reg)e->u.s.info, (Reg)~rkey);
+			} else {
+				regFree(p->currentCompiler, rkey);
+				regFree(p->currentCompiler, (Reg)e->u.s.info);
+				e->u.s.info = emit_ABC(p, e->type == INDEXED_EXTYPE ? OP_GET_PROPERTY : OP_GET_SUBSCRIPT, 0, (Reg)e->u.s.info, rkey);
+			}
 			e->type = RELOC_EXTYPE;
 			return;
 		}
@@ -648,11 +653,21 @@ static void expr_toval(Parser *p, expressionDescription *e) {
 		exprDischarge(p, e);
 }
 
+XAN_STATIC_ASSERT(OP_SUBVK == OP_SUBVV + (OP_ADDVK - OP_ADDVV));
+XAN_STATIC_ASSERT(OP_MULVK == OP_MULVV + (OP_ADDVK - OP_ADDVV));
+XAN_STATIC_ASSERT(OP_DIVVK == OP_DIVVV + (OP_ADDVK - OP_ADDVV));
+XAN_STATIC_ASSERT(OP_MODVK == OP_MODVV + (OP_ADDVK - OP_ADDVV));
+
 static void emit_arith(Parser *p, ByteCode op, expressionDescription *e1, expressionDescription *e2) {
 	PRINT_FUNCTION;
 
 	expr_toval(p, e2);
-	Reg rc = exprAnyReg(p, e2);
+	size_t rc;
+	if(((e2->type == NUMBER_EXTYPE) || (e2->type == STRING_EXTYPE)) &&
+			((rc = addConstant(p->vm, currentChunk(p->currentCompiler), e2->u.v)) <= MAX_REG))
+		op += OP_ADDVK - OP_ADDVV;
+	else
+		rc = exprAnyReg(p, e2);
 	expr_toval(p, e1);
 	Reg rb = exprAnyReg(p, e1);
 
@@ -737,13 +752,20 @@ static void emit_store(Parser *p, expressionDescription *variable, expressionDes
 	} else {
 		assert((variable->type == INDEXED_EXTYPE) || (variable->type == SUBSCRIPT_EXTYPE));
 		Reg ra = exprAnyReg(p, e);
-		Reg rc = variable->u.s.aux;
-		if((e->type == NONRELOC_EXTYPE) && (ra >= p->currentCompiler->actVar) && (rc >= ra))
-			regFree(p->currentCompiler, rc);
-		emit_ABC(p, variable->type == INDEXED_EXTYPE ? OP_SET_PROPERTY : OP_SET_SUBSCRIPT, ra, variable->u.s.info, rc);
-		variable->u.s.info = ra;
-		variable->type = NONRELOC_EXTYPE;
-		return;
+		int32_t rc = variable->u.s.aux;
+		if((variable->type == INDEXED_EXTYPE) && (rc < 0)) {
+			emit_ABC(p, OP_SET_PROPERTYK, ra, variable->u.s.info, (Reg)~rc);
+			variable->u.s.info = ra;
+			variable->type = NONRELOC_EXTYPE;
+			return;
+		} else {
+			if((e->type == NONRELOC_EXTYPE) && (ra >= p->currentCompiler->actVar) && (rc >= ra))
+				regFree(p->currentCompiler, rc);
+			emit_ABC(p, variable->type == INDEXED_EXTYPE ? OP_SET_PROPERTY : OP_SET_SUBSCRIPT, ra, variable->u.s.info, (Reg)rc);
+			variable->u.s.info = ra;
+			variable->type = NONRELOC_EXTYPE;
+			return;
+		}
 	}
 	variable->type = NONRELOC_EXTYPE;
 	assert(e->type == NONRELOC_EXTYPE);
@@ -1057,8 +1079,17 @@ static void number(Parser *p, expressionDescription *e) {
 }
 
 static void expressionIndexed(Parser *p, expressionType type, expressionDescription *e, expressionDescription *k) {
+	assert((type == INDEXED_EXTYPE) || (type == SUBSCRIPT_EXTYPE));
 	PRINT_FUNCTION;
 	e->type = type;
+	if((type == INDEXED_EXTYPE) && (k->type == STRING_EXTYPE)) {
+		uint16_t kidx = makeConstant(p, k->u.v);
+		if(kidx <= MAX_REG) {
+			e->u.s.aux = ~kidx;
+			e->assignable = true;
+			return;
+		}
+	}
 	e->u.s.aux = exprAnyReg(p, k);
 	e->assignable = true;
 }

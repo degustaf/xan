@@ -26,33 +26,40 @@
 	X(OP_MULVV,				ABC)sep \
 	X(OP_DIVVV,				ABC)sep \
 	X(OP_MODVV,				ABC)sep \
+	X(OP_ADDVK,				ABC)sep \
+	X(OP_SUBVK,				ABC)sep			/* 20 */ \
+	X(OP_MULVK,				ABC)sep \
+	X(OP_DIVVK,				ABC)sep \
+	X(OP_MODVK,				ABC)sep \
 	X(OP_JUMP,				J)sep \
-	X(OP_COPY_JUMP_IF_FALSE,AD)sep			/* 20 */ \
+	X(OP_COPY_JUMP_IF_FALSE,AD)sep			/* 25 */ \
 	X(OP_COPY_JUMP_IF_TRUE, AD)sep \
 	X(OP_JUMP_IF_FALSE,		D)sep \
 	X(OP_JUMP_IF_TRUE, 		D)sep \
 	X(OP_MOV,				AD)sep \
-	X(OP_CALL,				ABCcall)sep		/* 25 */ \
+	X(OP_CALL,				ABCcall)sep		/* 30 */ \
 	X(OP_GET_UPVAL,			AD)sep \
 	X(OP_SET_UPVAL,			AD)sep \
 	X(OP_CLOSURE,			AD)sep \
 	X(OP_CLOSE_UPVALUES,	A)sep \
-	X(OP_CLASS,				ADConst)sep		/* 30 */ \
+	X(OP_CLASS,				ADConst)sep		/* 35 */ \
 	X(OP_GET_PROPERTY,		ABC)sep \
 	X(OP_SET_PROPERTY,		ABC)sep \
-	X(OP_METHOD,			ABC)sep \
+	X(OP_GET_PROPERTYK,		ABC)sep \
+	X(OP_SET_PROPERTYK,		ABC)sep \
+	X(OP_METHOD,			ABC)sep			/* 40 */ \
 	X(OP_INHERIT,			AD)sep \
-	X(OP_GET_SUPER,			ABC)sep			/* 35 */ \
+	X(OP_GET_SUPER,			ABC)sep	\
 	X(OP_NEW_ARRAY,			AD)sep \
 	X(OP_DUPLICATE_ARRAY,	AD)sep \
-	X(OP_NEW_TABLE,			AD)sep \
+	X(OP_NEW_TABLE,			AD)sep			/* 45 */ \
 	X(OP_DUPLICATE_TABLE,	AD)sep \
-	X(OP_GET_SUBSCRIPT,		ABC)sep			/* 40 */ \
+	X(OP_GET_SUBSCRIPT,		ABC)sep \
 	X(OP_SET_SUBSCRIPT,		ABC)sep \
 	X(OP_BEGIN_TRY,			AJ)sep \
-	X(OP_END_TRY,			J)sep \
+	X(OP_END_TRY,			J)sep			/* 50 */ \
 	X(OP_THROW,				A)sep \
-	X(OP_JUMP_IF_NOT_EXC,	AJ)sep			/* 45 */ \
+	X(OP_JUMP_IF_NOT_EXC,	AJ)sep \
 	X(OP_INVOKE,			ABCcall)sep
 #define BUILD_OPCODES(op, _) op
 
@@ -62,15 +69,10 @@ typedef enum {
 	OP_COUNT,
 	OP_OR = OP_COPY_JUMP_IF_FALSE,	// For parsing
 	OP_AND = OP_COPY_JUMP_IF_TRUE,	// For parsing
-	// OP_ADDVK,
-	// OP_SUBVK,
-	// OP_MULVK,
-	// OP_DIVVK,
 	// OP_ADDKV,
 	// OP_SUBKV,
 	// OP_MULKV,
 	// OP_DIVKV,
-	// OP_INVOKE,			// Registers: M,N,O,P?
 } ByteCode;
 
 #define COMMA ,
@@ -112,11 +114,6 @@ static inline Value getPrimitive(primitive p) {
 #define RJump(x) ((ptrdiff_t)RD(x)-JUMP_BIAS)
 #define RB(x) ((Reg)(MAX_REG & RD(x)))
 #define RC(x) ((Reg)(RD(x) >> 8))
-
-#define RM(x) (Reg)(0x3f & (((uint32_t)(x)) >>  8))
-#define RN(x) (Reg)(0x3f & (((uint32_t)(x)) >> 14))
-#define RO(x) (Reg)(0x3f & (((uint32_t)(x)) >> 20))
-#define RP(x) (Reg)(0x3f & (((uint32_t)(x)) >> 26))
 
 static inline void setbc(uint32_t *p, uint8_t x, uint8_t ofs) {
 	((uint8_t*)(p))[ENDIAN_SELECT(ofs, 3-ofs)] = x;

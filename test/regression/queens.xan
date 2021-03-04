@@ -36,8 +36,4 @@ class Queens {
 
 }
 
-var start = clock();
-for(var i = 0; i<10; i = i + 1) {
-	print(Queens().placeQueen(0));	// expect: true
-}
-print(clock() - start);
+print(Queens().placeQueen(0));	// expect: true
