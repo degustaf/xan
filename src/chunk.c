@@ -11,8 +11,14 @@ void initChunk(VM *vm, Chunk *chunk) {
 	chunk->lines = NULL;
 	chunk->constants = NULL;		// For GC
 	chunk->constantIndices = NULL;	// For GC
-	chunk->constants = newArray(vm, 0);
-	chunk->constantIndices = newTable(vm, 0);
+	incCFrame(vm, 1, 3);
+	ObjArray *a = newArray(vm, 0);
+	writeBarrier(vm, a);
+	chunk->constants = a;
+	ObjTable *t = newTable(vm, 0);
+	writeBarrier(vm, t);
+	chunk->constantIndices = t;
+	decCFrame(vm);
 }
 
 void finalizeChunk(Chunk *chunk) {

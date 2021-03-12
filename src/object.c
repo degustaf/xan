@@ -58,7 +58,9 @@ ObjClass *newClass(VM *vm, ObjString *name) {
 	klass->cname = NULL;
 	klass->methodsArray = NULL;
 	vm->base[0] = OBJ_VAL(klass);	// name is still reachable through klass.
+	incCFrame(vm, 1, 3);
 	klass->methods = newTable(vm, 0);
+	decCFrame(vm);
 	writeBarrier(vm, klass);
 	return klass;
 }
@@ -75,7 +77,6 @@ void defineNativeClass(VM *vm, ObjTable *t, ObjClass *klass) {
 	writeBarrier(vm, klass);
 
 	// klass is statically allocated, so it avoids newClass. This puts it in the linked list of objects for the garbage collector.
-	// TODO This shouldn't be needed. but we'll get it working before trying to remove.
 	klass->obj.next = vm->gc.objects;
 	vm->gc.objects = (Obj*)klass;
 

@@ -68,7 +68,6 @@ static void incFrame(VM *vm, Reg stackUsed, size_t shift, ObjClosure *function, 
 	if(vm->base + shift + 1 + stackUsed + 1 > vm->stackTop)
 		vm->stackTop = vm->base + shift + 1 + stackUsed + 1;
 
-	// fprintf(stderr, "base increased for %s frame from %p to %p\n", function== NULL ? "C" : "xan", vm->base, vm->base + shift + 1);
 	assert(function);
 	assert(ip);
 	vm->base += shift + 1;
@@ -81,7 +80,6 @@ uint32_t* decFrame(VM *vm) {
 	uint32_t *ip = (uint32_t*)(AS_IP(vm->base[-2]));
 	uint32_t bytecode = *(ip - 1);
 	Reg ra = RA(bytecode) + 1;
-	// fprintf(stderr, "base decreased for xan frame from %p to %p\n", vm->base, vm->base - ra - 2);
 	vm->base -= ra + 2;
 	return ip;
 }
@@ -348,11 +346,12 @@ static void defineMethod(VM *vm, Value ra, Value rb, Value rc) {
 	do { \
 		Value b = vm->base[RB(bytecode)]; \
 		Value c = vm->base[RC(bytecode)]; \
-		if(!IS_NUMBER(b) || !IS_NUMBER(c)) { \
+		if(IS_NUMBER(b) && IS_NUMBER(c)) { \
+			vm->base[RA(bytecode)] = valueType(AS_NUMBER(b) op AS_NUMBER(c)); \
+		} else { \
 			runtimeError(vm, "Operands must be numbers."); \
 			goto exception_unwind; \
 		} \
-		vm->base[RA(bytecode)] = valueType(AS_NUMBER(b) op AS_NUMBER(c)); \
 	} while(false)
 #define BINARY_OPVK(valueType, op) \
 	do { \
@@ -862,6 +861,7 @@ exception_unwind: {
 	}
 }
 #undef BINARY_OPVV
+#undef BINARY_OPVK
 #undef READ_BYTECODE
 #undef TARGET
 #undef DISPATCH

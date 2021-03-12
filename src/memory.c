@@ -66,32 +66,22 @@ static void markRoots(VM *vm) {
 #ifdef DEBUG_LOG_GC
 	printf("stackTop = %ld (%p)\n", vm->stackTop - vm->stack, (void*)vm->stackTop);
 #endif /* DEBUG_LOG_GC */
-	/*
-	for(Value *slot = vm->stack; slot < vm->stackTop; slot++) {
-#ifdef DEBUG_LOG_GC
-		printf("stack[%ld] (%p) is ", slot - vm->stack, (void*)slot);
-		if(IS_CLASS(*slot) && AS_CLASS(*slot)->name == NULL) {
-			// During startup class->name might be NULL. No need to pollute
-			// printValue with a check, when it only matters if debugging the GC.
-			printf("<Class %s>", (AS_CLASS(*slot))->cname);
-		} else {
-			printValue(*slot);
-		}
-		printf("\n");
-#endif
-		markValue(&vm->gc, *slot);
-	}
-	*/
 
 	Value *base = vm->base;
-	for(Value *slot = vm->stackTop - 1; slot >= vm->stack; slot--) {
-		for(;(slot >= base - 1) && (slot >= vm->stack); slot--)		// TODO: remove reference to vm->stack. Once frames are included in the stack, this should be unnecesary.
+	for(Value *slot = vm->stackTop - 1; slot > vm->stack; slot--) {
+		for(;(slot >= base - 1) && (slot >= vm->stack); slot--) {
+#ifdef DEBUG_LOG_GC
+			printf("Marking %zx at stack[%zu]\n", slot->u, slot - vm->stack);
+#endif /* DEBUG_LOG_GC */
 			markValue(&vm->gc, *slot);
-		if(slot <= vm->stack)										// TODO: This should be removable once frames are on stack.
+		}
+		if(slot <= vm->stack)
 			break;
+#ifdef DEBUG_LOG_GC
+		printf("Marking %zx at stack[%zu]\n", slot->u, slot - vm->stack);
+#endif /* DEBUG_LOG_GC */
 		markValue(&vm->gc, *--slot);	// mark base[-3]
-		if(slot < vm->stack)
-			break;
+		assert(slot >= vm->stack);
 		assert(base >= vm->stack + 3);
 		if(IS_NIL(*slot)) {
 			base -= AS_IP(base[-2]);
@@ -102,6 +92,7 @@ static void markRoots(VM *vm) {
 			base -= ra + 2;
 		}
 	}
+	assert((vm->stack == NULL) || !IS_OBJ(*vm->stack) || AS_OBJ(*vm->stack)->isBlack);	// Have we traversed the stack all the way to the bottom?
 	markObject(&vm->gc, (Obj*)vm->initString);
 	markObject(&vm->gc, (Obj*)vm->newString);
 	markValue(&vm->gc, vm->exception);
@@ -160,6 +151,7 @@ static void blackenObject(GarbageCollector *gc, Obj *o) {
 			ObjFunction *f = (ObjFunction*)o;
 			markObject(gc, (Obj*)f->name);
 			markObject(gc, (Obj*)f->chunk.constants);
+			markObject(gc, (Obj*)f->chunk.constantIndices);
 			break;
 		}
 		case OBJ_INSTANCE: {

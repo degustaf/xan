@@ -22,7 +22,6 @@ class Tree {
   }
 }
 
-// var stretchDepth = 8;
 var iterations = 1;
 var d = 0;
 
