@@ -1,0 +1,3 @@
+var sys = import("sys");
+
+print(sys.ARGV);	// expect: [test/sysmod/argv.xan]

@@ -17,6 +17,7 @@ typedef struct {
 	bool printCode;
 	Scanner *s;
 	VM *vm;
+	thread *currentThread;
 
 	Compiler *currentCompiler;
 	ClassCompiler *currentClass;
@@ -398,7 +399,7 @@ static void regReserve(Compiler *c, int n) {
 }
 
 static uint16_t makeConstant(Parser *p, Value v) {
-	p->vm->base[0] = v;
+	p->currentThread->base[0] = v;
 	size_t constant = addConstant(p->vm, currentChunk(p->currentCompiler), v);
 	if(constant > UINT16_MAX) {
 		errorAtPrevious(p, "Too many constants in one chunk.");
@@ -836,7 +837,7 @@ static void initCompiler(Parser *p, Compiler *compiler, FunctionType type) {
 	PRINT_FUNCTION;
 	compiler->enclosing = p->currentCompiler;
 	p->currentCompiler = compiler;
-	p->vm->currentCompiler = compiler;
+	p->currentThread->currentCompiler = compiler;
 	compiler->type = type;
 	compiler->scopeDepth = 0;
 	compiler->minArity = 0;
@@ -844,9 +845,9 @@ static void initCompiler(Parser *p, Compiler *compiler, FunctionType type) {
 	compiler->defaultArgs = NULL;
 	compiler->uvCount = 0;
 	compiler->name = NULL;
-	initChunk(p->vm, &compiler->chunk);
+	initChunk(p->vm, p->currentThread, &compiler->chunk);
 	if(type != TYPE_SCRIPT)
-		compiler->name = copyString(p->previous.start, p->previous.length, p->vm);
+		compiler->name = copyString(p->vm, p->currentThread, p->previous.start, p->previous.length);
 	compiler->pendingJumpList = NO_JUMP;
 	compiler->pendingContinueList = NO_JUMP;
 	compiler->last_target = NO_JUMP;
@@ -881,7 +882,7 @@ static ObjFunction *endCompiler(Parser *p) {
 		emitReturn(p, &e);
 	}
 	assert(p->currentCompiler->maxArity - p->currentCompiler->minArity >= 0);
-	ObjFunction *f = newFunction(p->vm, p->currentCompiler->uvCount, p->currentCompiler->maxArity - p->currentCompiler->minArity + 1);
+	ObjFunction *f = newFunction(p->vm, p->currentThread, p->currentCompiler->uvCount, p->currentCompiler->maxArity - p->currentCompiler->minArity + 1);
 	f->minArity = p->currentCompiler->minArity;
 	f->maxArity = p->currentCompiler->maxArity;
 	memcpy(&f->chunk, &p->currentCompiler->chunk, sizeof(Chunk));
@@ -893,7 +894,7 @@ static ObjFunction *endCompiler(Parser *p) {
 	if(!p->hadError && p->printCode) {
 		disassembleFunction(f);
 	}
-	p->vm->currentCompiler = p->currentCompiler = p->currentCompiler->enclosing;
+	p->currentThread->currentCompiler = p->currentCompiler = p->currentCompiler->enclosing;
 	return f;
 }
 
@@ -1059,7 +1060,7 @@ static Reg argumentList(Parser *p, expressionDescription *e, ByteCode op) {
 	return nargs;
 }
 
-static void call(Parser *p, expressionDescription *e) {
+static void parseCall(Parser *p, expressionDescription *e) {
 	PRINT_FUNCTION;
 	if(!p->hadError)
 		exprNextReg(p, e);
@@ -1112,12 +1113,12 @@ static void array(Parser *p, expressionDescription *e) {
 
 			if(ExprIsConstantHasNoJump(&val)) {
 				if(array == NULL) {
-					array = newArray(p->vm, count + 1);
+					array = newArray(p->vm, p->currentThread, count + 1);
 					uint16_t constIdx = makeConstant(p, OBJ_VAL(array));
 					currentChunk(p->currentCompiler)->code[ins_location] =
 						OP_AD(OP_DUPLICATE_ARRAY, nextReg - 1, constIdx);
 				}
-				p->vm->base[0] = val.u.v;
+				p->currentThread->base[0] = val.u.v;
 				setArray(p->vm, array, count, val.u.v);
 				writeBarrier(p->vm, array);
 			} else {
@@ -1157,7 +1158,7 @@ static void makeStringConstant(Parser *p, expressionDescription *e, const char *
 	e->u.r.r = 0;
 	e->u.s.info = 0;
 #endif /* DEBUG_EXPRESSION_DESCRIPTION */
-	e->u.v = OBJ_VAL(copyString(s, length, p->vm));
+	e->u.v = OBJ_VAL(copyString(p->vm, p->currentThread, s, length));
 	e->true_jump = e->false_jump = NO_JUMP;
 }
 
@@ -1185,13 +1186,13 @@ static void table(Parser *p, expressionDescription *e) {
 			count++;
 			consume(p, TOKEN_COLON, "Expect ':' after key in table literal.");
 			if(key.type == STRING_EXTYPE)
-				p->vm->base[0] = key.u.v;
+				p->currentThread->base[0] = key.u.v;
 
 			if(ExprIsConstant(&key) && (key.type != NIL_EXTYPE) && (key.type == STRING_EXTYPE || key.type == NUMBER_EXTYPE)) {
 				if(t == NULL) {
-					incCFrame(p->vm, 1, 3);
-					t = newTable(p->vm, count);
-					decCFrame(p->vm);
+					incCFrame(p->vm, p->currentThread, 1, 3);
+					t = newTable(p->vm, p->currentThread, count);
+					decCFrame(p->currentThread);
 					uint16_t constIdx = makeConstant(p, OBJ_VAL(t));
 					currentChunk(p->currentCompiler)->code[ins_location] =
 						OP_AD(OP_DUPLICATE_TABLE, nextReg - 1, constIdx);
@@ -1202,7 +1203,7 @@ static void table(Parser *p, expressionDescription *e) {
 
 			expression(p, &val);
 			if(val.type == STRING_EXTYPE)
-				p->vm->base[1] = val.u.v;
+				p->currentThread->base[1] = val.u.v;
 
 			if(ExprIsConstant(&key) && (key.type != NIL_EXTYPE) &&
 					(key.type == STRING_EXTYPE || key.type == NUMBER_EXTYPE || ExprIsConstantHasNoJump(&val))) {
@@ -1343,7 +1344,7 @@ static int16_t var_lookup(Parser *p, Compiler *c, Token *name, expressionDescrip
 			}
 		}
 	} else {
-		exprInit(e, GLOBAL_EXTYPE, makeConstant(p, OBJ_VAL(copyString(name->start, name->length, p->vm))));
+		exprInit(e, GLOBAL_EXTYPE, makeConstant(p, OBJ_VAL(copyString(p->vm, p->currentThread, name->start, name->length))));
 	}
 	return -2;
 }
@@ -1437,7 +1438,7 @@ static void primaryExpression(Parser *p, expressionDescription *e) {
 
 	while(true) {
 		if(match(p, TOKEN_LEFT_PAREN)) {
-			call(p, e);
+			parseCall(p, e);
 		} else if(match(p, TOKEN_DOT)) {
 			dot(p, e);
 		} else if(match(p, TOKEN_LEFT_BRACKET)) {
@@ -1515,7 +1516,7 @@ static void scopeVariable(Parser *p, expressionDescription *e, Token *name) {
 	PRINT_FUNCTION;
 	int r = declareVariable(p, name);
 	if(r < 0) {
-		exprInit(e, GLOBAL_EXTYPE, makeConstant(p, OBJ_VAL(copyString(name->start, name->length, p->vm))));
+		exprInit(e, GLOBAL_EXTYPE, makeConstant(p, OBJ_VAL(copyString(p->vm, p->currentThread, name->start, name->length))));
 	} else {
 		exprInit(e, LOCAL_EXTYPE, r);
 		e->assignable = true;
@@ -1641,7 +1642,7 @@ static void function(Parser *p, expressionDescription *e, FunctionType type) {
 	PRINT_FUNCTION;
 	Compiler c;
 
-	p->vm->currentCompiler = &c;
+	p->currentThread->currentCompiler = &c;
 	initCompiler(p, &c, type);
 	beginScope(&c);
 
@@ -1729,12 +1730,12 @@ static void classDeclaration(Parser *p) {
 	classCompiler.name = p->previous;
 	classCompiler.enclosing = p->currentClass;
 	classCompiler.hasSuperClass = false;
-	p->currentClass = p->vm->currentClassCompiler = &classCompiler;
+	p->currentClass = p->currentThread->currentClassCompiler = &classCompiler;
 	classCompiler.methods = NULL;
-	classCompiler.methods = newTable(p->vm, 0);
+	classCompiler.methods = newTable(p->vm, p->currentThread, 0);
 
 	printExpr(stderr, &name);
-	exprInit(&klass, RELOC_EXTYPE, emit_AD(p, OP_CLASS, 0, makeConstant(p, OBJ_VAL(copyString(classCompiler.name.start, classCompiler.name.length, p->vm)))));
+	exprInit(&klass, RELOC_EXTYPE, emit_AD(p, OP_CLASS, 0, makeConstant(p, OBJ_VAL(copyString(p->vm, p->currentThread, classCompiler.name.start, classCompiler.name.length)))));
 	exprAnyReg(p, &klass);
 	emitDefine(p, &name, &klass);
 	var_lookup(p, p->currentCompiler, &classCompiler.name, &klass, true);
@@ -1767,7 +1768,7 @@ static void classDeclaration(Parser *p) {
 
 	consume(p, TOKEN_RIGHT_BRACE, "Expect '}' after class body.");
 	p->currentClass = classCompiler.enclosing;
-	p->vm->currentClassCompiler = classCompiler.enclosing;
+	p->currentThread->currentClassCompiler = classCompiler.enclosing;
 }
 
 static void returnStatement(Parser *p) {
@@ -2063,7 +2064,7 @@ static void declaration(Parser *p) {
 	p->currentCompiler->nextReg = p->currentCompiler->actVar;
 }
 
-static void initParser(Parser *p, VM *vm, Compiler *compiler, const char *source, bool printCode) {
+static void initParser(Parser *p, VM *vm, thread *currentThread, Compiler *compiler, const char *source, bool printCode) {
 	PRINT_FUNCTION;
 	p->s = initScanner(source);
 	p->vm = vm;
@@ -2076,14 +2077,15 @@ static void initParser(Parser *p, VM *vm, Compiler *compiler, const char *source
 #endif
 	p->currentCompiler = NULL;
 	p->currentClass = NULL;
-	p->vm->currentCompiler = compiler;
+	p->currentThread = currentThread;
+	p->currentThread->currentCompiler = compiler;
 	initCompiler(p, compiler, TYPE_SCRIPT);
 }
 
-ObjFunction *parse(VM *vm, const char *source, bool printCode) {
+ObjFunction *parse(VM *vm, thread *currentThread, const char *source, bool printCode) {
 	Parser p;
 	Compiler compiler;
-	initParser(&p, vm, &compiler, source, printCode);
+	initParser(&p, vm, currentThread, &compiler, source, printCode);
 
 	advance(&p);
 	while(!match(&p, TOKEN_EOF)) {

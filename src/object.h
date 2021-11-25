@@ -80,28 +80,28 @@ static inline bool isObjType(Value v, ObjType t) {
 OBJ_BUILDER(IS_TYPE, NOTHING)
 
 static inline bool HAS_PROPERTIES(Value value) {
-	return IS_INSTANCE(value) || IS_ARRAY(value) || IS_STRING(value);
+	return IS_INSTANCE(value) || IS_ARRAY(value) || IS_STRING(value) || IS_MODULE(value);
 }
 
-ObjArray *newArray(VM *vm, size_t count);
+ObjArray *newArray(VM *vm, thread *currentThread, size_t count);
 ObjBoundMethod *newBoundMethod(VM *vm, Value receiver, Value method);
-ObjClass *newClass(VM *vm, ObjString *name);
+ObjClass *newClass(VM *vm, thread *currentThread, ObjString *name);
 ObjClosure *newClosure(VM *vm, ObjFunction *f);
-ObjFunction *newFunction(VM *vm, size_t uvCount, size_t varArityCount);
-ObjInstance *newInstance(VM *vm, ObjClass *klass);
-ObjModule * newModule(VM *vm, ObjString *name);
+ObjFunction *newFunction(VM *vm, thread *currentThread, size_t uvCount, size_t varArityCount);
+ObjInstance *newInstance(VM *vm, thread *currentThread, ObjClass *klass);
+ObjModule * newModule(VM *vm, thread *currentThread, ObjString *name);
 ObjNative *newNative(VM *vm, NativeFn function);
 
 ObjUpvalue *newUpvalue(VM *vm, Value *slot);
 ObjClass *copyClass(VM *vm, ObjClass *klass);
-void defineNative(VM *vm, ObjTable *t, const NativeDef *f);
-void defineNativeClass(VM *vm, ObjTable *t, ObjClass *def);
-ObjModule *defineNativeModule(VM *vm, ModuleDef *def);
-ObjArray *duplicateArray(VM *vm, ObjArray *source);
+void defineNative(VM *vm, thread *currentThread, ObjTable *t, const NativeDef *f);
+void defineNativeClass(VM *vm, thread *currentThread, ObjTable *t, ObjClass *def);
+ObjModule *defineNativeModule(VM *vm, thread *currentThread, ModuleDef *def);
+ObjArray *duplicateArray(VM *vm, thread *currentThread, ObjArray *source);
 void setArray(VM *vm, ObjArray *array, int idx, Value v);	// It is the caller's responsability to ensure that v is findable by the GC.
 bool getArray(ObjArray *array, int idx, Value *ret);
-ObjString *takeString(char *chars, size_t length, VM *vm);
-ObjString *copyString(const char *chars, size_t length, VM *vm);
+ObjString *takeString(VM *vm, thread *currentThread, char *chars, size_t length);
+ObjString *copyString(VM *vm, thread *currentThread, const char *chars, size_t length);
 void fprintObject(FILE *restrict stream, Value value);
 void printObject(Value value);
 
@@ -116,5 +116,7 @@ bool valuesEqual(Value, Value);
 #endif /* TAGGED_NAN */
 void fprintValue(FILE *restrict stream, Value value);
 void printValue(Value value);
+
+extern ObjClass moduleDef;
 
 #endif /* XAN_OBJECT_H */

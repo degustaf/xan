@@ -1,0 +1,1 @@
+import();		// expect runtime error: Function 'import' expected 1 argument but got 0.

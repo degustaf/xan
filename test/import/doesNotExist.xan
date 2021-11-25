@@ -1,0 +1,1 @@
+import("doesNotExist");		// expect runtime error: Cannot find module 'doesNotExist'.

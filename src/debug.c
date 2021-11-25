@@ -143,16 +143,16 @@ static void dumpValueArray(Value *valueArray, Value *ArrayTop, size_t count) {
 	printf("}\n");
 }
 
-void dumpStack(VM *vm, size_t count) {
+void dumpStack(thread *currentThread, size_t count) {
 	printf("stack = ");
-	dumpValueArray(vm->stack, vm->stackLast, count);
-	printf("stack[%zu] = ", (size_t)(vm->base - vm->stack));
-	dumpValueArray(vm->base, vm->stackLast, count);
+	dumpValueArray(currentThread->stack, currentThread->stackLast, count);
+	printf("stack[%zu] = ", (size_t)(currentThread->base - currentThread->stack));
+	dumpValueArray(currentThread->base, currentThread->stackLast, count);
 }
 
-void dumpOpenUpvalues(VM *vm) {
+void dumpOpenUpvalues(thread *currentThread) {
 	printf("Open upvalues = {");
-	for(ObjUpvalue **uv = &vm->openUpvalues; *uv != NULL; uv = &(*uv)->next) {
+	for(ObjUpvalue **uv = &currentThread->openUpvalues; *uv != NULL; uv = &(*uv)->next) {
 		printf("%p:", (void*)(*uv)->location);
 		printObject(*(*uv)->location);
 		printf(", ");

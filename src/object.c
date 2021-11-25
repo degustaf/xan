@@ -3,14 +3,15 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "class.h"
 #include "chunk.h"
 #include "exception.h"
 #include "memory.h"
 #include "table.h"
 
-ObjFunction *newFunction(VM *vm, size_t uvCount, size_t varArityCount) {
+ObjFunction *newFunction(VM *vm, thread *currentThread, size_t uvCount, size_t varArityCount) {
 	ObjFunction *f = (ObjFunction*)allocateObject(sizeof(*f) + uvCount * sizeof(uint16_t) + varArityCount * sizeof(size_t), OBJ_FUNCTION, vm);
-	*vm->base = OBJ_VAL(f);
+	currentThread->base[0] = OBJ_VAL(f);
 
 	f->minArity = 0;
 	f->maxArity = 0;
@@ -18,7 +19,7 @@ ObjFunction *newFunction(VM *vm, size_t uvCount, size_t varArityCount) {
 	f->stackUsed = 0;
 	f->name = NULL;
 	f->code_offsets = (size_t*)&f->uv[f->uvCount];
-	initChunk(vm, &f->chunk);
+	initChunk(vm, currentThread, &f->chunk);
 	return f;
 }
 
@@ -51,87 +52,89 @@ ObjBoundMethod *newBoundMethod(VM *vm, Value receiver, Value method) {
 	return ret;
 }
 
-ObjClass *newClass(VM *vm, ObjString *name) {
+ObjClass *newClass(VM *vm, thread *currentThread, ObjString *name) {
 	ObjClass *klass = ALLOCATE_OBJ(vm, ObjClass, OBJ_CLASS);
 	klass->name = name;
 	klass->methods = NULL;
 	klass->cname = NULL;
 	klass->methodsArray = NULL;
-	vm->base[0] = OBJ_VAL(klass);	// name is still reachable through klass.
-	incCFrame(vm, 1, 3);
-	klass->methods = newTable(vm, 0);
-	decCFrame(vm);
+	currentThread->base[0] = OBJ_VAL(klass);	// name is still reachable through klass.
+	incCFrame(vm, currentThread, 1, 3);
+	klass->methods = newTable(vm, currentThread, 0);
+	decCFrame(currentThread);
 	writeBarrier(vm, klass);
 	return klass;
 }
 
-void defineNative(VM *vm, ObjTable *t, const NativeDef *f) {
-	vm->base[0] = OBJ_VAL(copyString(f->name, strlen(f->name), vm));
-	vm->base[1] = OBJ_VAL(newNative(vm, f->method));
-	assert(IS_STRING(vm->base[0]));
-	tableSet(vm, t, vm->base[0], vm->base[1]);
+void defineNative(VM *vm, thread *currentThread, ObjTable *t, const NativeDef *f) {
+	currentThread->base[0] = OBJ_VAL(copyString(vm, currentThread, f->name, strlen(f->name)));
+	currentThread->base[1] = OBJ_VAL(newNative(vm, f->method));
+	assert(IS_STRING(currentThread->base[0]));
+	tableSet(vm, t, currentThread->base[0], currentThread->base[1]);
 }
 
-void defineNativeClass(VM *vm, ObjTable *t, ObjClass *klass) {
-	klass->name = copyString(klass->cname, strlen(klass->cname), vm);
+void defineNativeClass(VM *vm, thread *currentThread, ObjTable *t, ObjClass *klass) {
+	klass->name = copyString(vm, currentThread, klass->cname, strlen(klass->cname));
 	writeBarrier(vm, klass);
 
 	// klass is statically allocated, so it avoids newClass. This puts it in the linked list of objects for the garbage collector.
 	klass->obj.next = vm->gc.objects;
 	vm->gc.objects = (Obj*)klass;
 
-	vm->base[0] = OBJ_VAL(klass);
+	currentThread->base[0] = OBJ_VAL(klass);
 
-	incCFrame(vm, 2, 3);
-	klass->methods = newTable(vm, 0);
+	incCFrame(vm, currentThread, 2, 3);
+	klass->methods = newTable(vm, currentThread, 0);
 	writeBarrier(vm, klass);
 	assert(klass->methods);
 	for(size_t i = 0; klass->methodsArray[i].name; i++) {
-		defineNative(vm, klass->methods, &klass->methodsArray[i]);
-		// defineNative uses vm->base[0] for the function name and vm->base[1] for the function.
-		if(AS_STRING(vm->base[0]) == vm->newString)
-			klass->newFn = AS_OBJ(vm->base[1]);
+		defineNative(vm, currentThread, klass->methods, &klass->methodsArray[i]);
+		// defineNative uses currentThread->base[0] for the function name and currentThread->base[1] for the function.
+		if(AS_STRING(currentThread->base[0]) == vm->newString)
+			klass->newFn = AS_OBJ(currentThread->base[1]);
 	}
-	decCFrame(vm);
+	decCFrame(currentThread);
 
 	tableSet(vm, t, OBJ_VAL(klass->name), OBJ_VAL(klass));
 }
 
-ObjModule * newModule(VM *vm, ObjString *name) {
-	vm->base[0] = OBJ_VAL(name);
+ObjModule * newModule(VM *vm, thread *currentThread, ObjString *name) {
+	currentThread->base[0] = OBJ_VAL(name);
 	ObjModule *module = ALLOCATE_OBJ(vm, ObjModule, OBJ_MODULE);
 	module->name = name;
-	module->items = NULL;
-	vm->base[0] = OBJ_VAL(module);
-	module->items = newTable(vm, 0);
+	module->klass = NULL;
+	module->fields = NULL;
+	currentThread->base[0] = OBJ_VAL(module);
+	module->klass = &moduleDef;
+	module->fields = newTable(vm, currentThread, 0);
 	writeBarrier(vm, module);
 	return module;
 }
 
-ObjModule *defineNativeModule(VM *vm, ModuleDef *def) {
-	ObjString *name = copyString(def->name, strlen(def->name), vm);
-	ObjModule *ret = newModule(vm, name);
-	vm->base[0] = OBJ_VAL(ret);		// For GC.
+ObjModule *defineNativeModule(VM *vm, thread *currentThread, ModuleDef *def) {
+	ObjString *name = copyString(vm, currentThread, def->name, strlen(def->name));
+	ObjModule *ret = newModule(vm, currentThread, name);
+	currentThread->base[0] = OBJ_VAL(ret);		// For GC.
 
-	incCFrame(vm, 1, 3);
+	incCFrame(vm, currentThread, 1, 3);
 	for(ObjClass **c = def->classes; *c; c++)
-		defineNativeClass(vm, ret->items, *c);
+		defineNativeClass(vm, currentThread, ret->fields, *c);
 	assert(def->methods);
 	for(NativeDef *m = def->methods; m->name; m++)
-		defineNative(vm, ret->items, m);
-	decCFrame(vm);
+		defineNative(vm, currentThread, ret->fields, m);
+	decCFrame(currentThread);
 
 	return ret;
 }
 
-ObjInstance *newInstance(VM *vm, ObjClass *klass) {
+ObjInstance *newInstance(VM *vm, thread *currentThread, ObjClass *klass) {
 	ObjInstance *o = ALLOCATE_OBJ(vm, ObjInstance, OBJ_INSTANCE);
 	o->klass = klass;
 	o->fields = NULL;
-	vm->base[0] = OBJ_VAL(o);
-	incCFrame(vm, 1, 3);
-	o->fields = newTable(vm, 0);
-	decCFrame(vm);
+	currentThread->base[0] = OBJ_VAL(o);
+	incCFrame(vm, currentThread, 1, 3);
+	o->fields = newTable(vm, currentThread, 0);
+	decCFrame(currentThread);
 	writeBarrier(vm, o);
 	return o;
 }
@@ -142,8 +145,8 @@ ObjNative *newNative(VM *vm, NativeFn function) {
 	return native;
 }
 
-ObjArray *duplicateArray(VM *vm, ObjArray *source) {
-	ObjArray *dest = newArray(vm, source->count);
+ObjArray *duplicateArray(VM *vm, thread *currentThread, ObjArray *source) {
+	ObjArray *dest = newArray(vm, currentThread, source->count);
 	for(size_t i=0; i<source->count; i++)
 		dest->values[i] = source->values[i];
 	return dest;
@@ -232,13 +235,20 @@ void fprintObject(FILE *restrict stream, Value value) {
 			fprintf(stream, "<native fn>");
 			break;
 		case OBJ_STRING:
-			fprintf(stream, "%s", AS_CSTRING(value));
+			if(AS_STRING(value)->length == 0) {
+				fprintf(stream, "''");
+			} else {
+				fprintf(stream, "%s", AS_CSTRING(value));
+			}
 			break;
 		case OBJ_TABLE:
 			fprintTable(stream, AS_TABLE(value));
 			break;
 		case OBJ_UPVALUE:
 			fprintf(stream, "upvalue");
+			break;
+		case OBJ_THREAD:
+			fprintf(stream, "thread");
 			break;
 		case OBJ_EXCEPTION:
 			fprintf(stream, "Error: ");
@@ -282,3 +292,15 @@ void fprintValue(FILE *restrict stream, Value value) {
 void printValue(Value value) {
 	fprintValue(stdout, value);
 }
+
+NativeDef moduleMethods[] = {
+	{NULL, NULL}
+};
+
+ObjClass moduleDef = {
+	CLASS_HEADER,
+	"Module",
+	moduleMethods,
+	RUNTIME_CLASSDEF_FIELDS,
+	false
+};

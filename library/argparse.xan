@@ -1,0 +1,7 @@
+
+class Parser {
+	init() {
+		var sys = import("sys");
+		this.ARGV = sys.ARGV;
+	}
+}

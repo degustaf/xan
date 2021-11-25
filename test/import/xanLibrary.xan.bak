@@ -1,0 +1,3 @@
+var ap = import("argparse");
+var parser = ap.Parser();
+print(parser.ARGV);		// expect : []

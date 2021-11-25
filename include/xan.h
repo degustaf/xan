@@ -6,7 +6,7 @@
 typedef struct sObj Obj;
 typedef struct sVM VM;
 
-void initVM(VM *vm);
+void initVM(VM *vm, int argc, char** argv, int start);
 void freeVM(VM *vm);
 
 typedef enum {
@@ -16,5 +16,7 @@ typedef enum {
 } InterpretResult;
 
 InterpretResult interpret(VM *vm, const char *source, bool printCode);
+
+char* readFile(const char *path);
 
 #endif /* XAN_XAN_H */

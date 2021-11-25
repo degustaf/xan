@@ -4,21 +4,21 @@
 #include "memory.h"
 #include "table.h"
 
-void initChunk(VM *vm, Chunk *chunk) {
+void initChunk(VM *vm, thread *currentThread, Chunk *chunk) {
 	chunk->count = 0;
 	chunk->capacity = 0;
 	chunk->code = NULL;
 	chunk->lines = NULL;
 	chunk->constants = NULL;		// For GC
 	chunk->constantIndices = NULL;	// For GC
-	incCFrame(vm, 1, 3);
-	ObjArray *a = newArray(vm, 0);
+	incCFrame(vm, currentThread, 1, 3);
+	ObjArray *a = newArray(vm, currentThread, 0);
 	writeBarrier(vm, a);
 	chunk->constants = a;
-	ObjTable *t = newTable(vm, 0);
+	ObjTable *t = newTable(vm, currentThread, 0);
 	writeBarrier(vm, t);
 	chunk->constantIndices = t;
-	decCFrame(vm);
+	decCFrame(currentThread);
 }
 
 void finalizeChunk(Chunk *chunk) {

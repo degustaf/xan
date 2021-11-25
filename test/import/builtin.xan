@@ -1,0 +1,3 @@
+var b = import("builtin");
+
+b.print(b.sqrt(4));		// expect: 2

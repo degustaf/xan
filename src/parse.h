@@ -6,6 +6,6 @@
 #include "object.h"
 #include "vm.h"
 
-ObjFunction *parse(VM *vm, const char *source, bool printCode);
+ObjFunction *parse(VM *vm, thread *currentThread, const char *source, bool printCode);
 
 #endif /* XAN_PARSE_H */

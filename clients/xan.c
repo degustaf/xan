@@ -1,4 +1,5 @@
 #include "../src/common.h"
+#include "xan.h"
 
 #include <errno.h>
 #include <stdbool.h>
@@ -9,9 +10,9 @@
 #include "../src/debug.h"
 #include "../src/vm.h"
 
-static void repl(bool printCode) {
+static void repl(bool printCode, int argc, char** argv) {
 	VM vm;
-	initVM(&vm);
+	initVM(&vm, argc, argv, argc);
 	char line[1024];	// TODO there should not be a hardcoded line length.
 
 	while(true) {
@@ -29,39 +30,16 @@ static void repl(bool printCode) {
 	freeVM(&vm);
 }
 
-static char* readFile(const char *path) {
-	FILE *file = fopen(path, "rb");
-	if(file == NULL) {
+static void runFile(const char *path, bool printCode, int argc, char** argv, int start) {
+	VM vm;
+	initVM(&vm, argc, argv, start);
+	char *source = readFile(path);
+	if(source == NULL) {
 		int errnum = errno;
 		errno = 0;
 		fprintf(stderr, "Could not open file \"%s\": %s\n", path, strerror(errnum));
 		exit(errnum);
 	}
-
-	fseek(file, 0L, SEEK_END);
-	size_t fileSize = ftell(file);
-	rewind(file);
-
-	char *buffer = malloc(fileSize+1);
-	if(buffer == NULL) {
-		fprintf(stderr, "Not enough mempry to read \"%s\".\n", path);
-		exit(74);
-	}
-
-	size_t bytesRead = fread(buffer, sizeof(char), fileSize, file);
-	if(bytesRead < fileSize) {
-		fprintf(stderr, "Could not read file \"%s\".\n", path);
-	}
-	buffer[bytesRead] = '\0';
-
-	fclose(file);
-	return buffer;
-}
-
-static void runFile(const char *path, bool printCode) {
-	VM vm;
-	initVM(&vm);
-	char *source = readFile(path);
 	InterpretResult result = interpret(&vm, source, printCode);
 	free(source);
 	freeVM(&vm);
@@ -78,9 +56,9 @@ int main(int argc, char** argv) {
 		i++;
 	}
 	if(argc == i) {
-		repl(printCode);
-	} else if(argc == i+1) {
-		runFile(argv[i], printCode);
+		repl(printCode, argc, argv);
+	} else if(argc >= i+1) {
+		runFile(argv[i], printCode, argc, argv, i);
 	} else {
 		fprintf(stderr, "Usage: %s [path]\n", argv[0]);
 		exit(64);

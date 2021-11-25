@@ -1,0 +1,4 @@
+var sys = import("sys");
+
+print(sys.path.count());	// expect: 2
+print(sys.path[0]);	// expect: .

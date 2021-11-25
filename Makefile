@@ -92,7 +92,7 @@ $(PATHLB)/$(LIBRARY): $(OBJS)
 	$(AR) rcs $@ $^
 
 $(PATHB)/%.o: $(PATHC)/%.c | $(PATHB) $(PATHD)
-	$(COMPILE) -c $< -o $@
+	$(CC) $(CLIENT_CFLAGS) -MT $@ -MP -MMD -MF $(PATHD)/$*.Td -c $< -o $@
 	$(POSTCOMPILE)
 
 ifeq ($(CC),gcc)

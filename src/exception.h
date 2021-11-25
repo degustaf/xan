@@ -11,6 +11,6 @@ typedef struct {
 	size_t topBase;
 } ObjException;
 
-void ExceptionFormattedStr(VM *vm, const char* format, ...);
+void ExceptionFormattedStr(VM *vm, thread *currentThread, const char* format, ...);
 
 #endif /* XAN_EXCEPTION_H */

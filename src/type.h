@@ -24,6 +24,7 @@
 	X(INSTANCE)SEP \
 	X(BOUND_METHOD)SEP \
 	X(TABLE)SEP \
+	X(THREAD)SEP \
 	X(EXCEPTION)
 
 typedef enum {
@@ -194,17 +195,25 @@ typedef struct ClassCompiler {
 	ObjTable *methods;
 } ClassCompiler;
 
-// struct sCallFrame {
-// 	// ObjClosure *c;
-// 	intptr_t ip;
-// };
-// typedef struct sCallFrame CallFrame;
-
 struct try_frame {
-	size_t frame;
 	uint32_t ip;
 	Reg exception;
 };
+
+typedef struct {
+	Obj obj;
+	struct try_frame _try[TRY_MAX];
+	size_t tryCount;
+	Value *stack;
+	Value *stackTop;
+	Value *stackLast;
+	Value *base;
+
+	Value exception;
+	ObjUpvalue *openUpvalues;
+	Compiler *currentCompiler;
+	ClassCompiler *currentClassCompiler;
+} thread;
 
 typedef struct {
 	Obj *objects;
@@ -219,25 +228,15 @@ typedef struct {
 
 struct sVM {
 	GarbageCollector gc;
-	struct try_frame _try[TRY_MAX];
-	size_t tryCount;
-	Value *stack;
-	Value *stackTop;
-	Value *stackLast;
-	Value *base;
-	size_t stackSize;
-
-	Value exception;
 	ObjTable *strings;
 	ObjTable *globals;
+	ObjTable *builtinMods;
 	ObjString *initString;
 	ObjString *newString;
-	ObjUpvalue *openUpvalues;
-	Compiler *currentCompiler;
-	ClassCompiler *currentClassCompiler;
+	thread *baseThread;
 };
 
-typedef bool (*NativeFn)(VM *vm, int argCount, Value *args);
+typedef bool (*NativeFn)(VM *vm, thread *currentThread, int argCount);
 
 typedef struct {
 	Obj obj;
@@ -264,9 +263,8 @@ struct sObjClass {
 #define RUNTIME_CLASSDEF_FIELDS NULL, NULL, NULL
 
 typedef struct {
-	Obj obj;
+	INSTANCE_FIELDS;
 	ObjString *name;
-	ObjTable *items;
 } ObjModule;
 
 typedef struct {

@@ -52,37 +52,37 @@ static void markArray(GarbageCollector *gc, ObjArray *array) {
 		markValue(gc, array->values[i]);
 }
 
-static void markCompilerRoots(VM *vm) {
-	for(Compiler *c = vm->currentCompiler; c != NULL; c = c->enclosing) {
-		markObject(&vm->gc, (Obj*)c->name);
-		markObject(&vm->gc, (Obj*)c->chunk.constants);
-		markObject(&vm->gc, (Obj*)c->chunk.constantIndices);
+static void markCompilerRoots(GarbageCollector *gc, thread *t) {
+	for(Compiler *c = t->currentCompiler; c != NULL; c = c->enclosing) {
+		markObject(gc, (Obj*)c->name);
+		markObject(gc, (Obj*)c->chunk.constants);
+		markObject(gc, (Obj*)c->chunk.constantIndices);
 	}
-	for(ClassCompiler *c = vm->currentClassCompiler; c != NULL; c = c->enclosing)
-		markObject(&vm->gc, (Obj*)c->methods);
+	for(ClassCompiler *c = t->currentClassCompiler; c != NULL; c = c->enclosing)
+		markObject(gc, (Obj*)c->methods);
 }
 
-static void markRoots(VM *vm) {
+static void markThread(GarbageCollector *gc, thread *t) {
 #ifdef DEBUG_LOG_GC
-	printf("stackTop = %ld (%p)\n", vm->stackTop - vm->stack, (void*)vm->stackTop);
+	printf("stackTop = %ld (%p)\n", t->stackTop - t->stack, (void*)t->stackTop);
 #endif /* DEBUG_LOG_GC */
 
-	Value *base = vm->base;
-	for(Value *slot = vm->stackTop - 1; slot > vm->stack; slot--) {
-		for(;(slot >= base - 1) && (slot >= vm->stack); slot--) {
+	Value *base = t->base;
+	for(Value *slot = t->stackTop - 1; slot > t->stack; slot--) {
+		for(;(slot >= base - 1) && (slot >= t->stack); slot--) {
 #ifdef DEBUG_LOG_GC
-			printf("Marking %zx at stack[%zu]\n", slot->u, slot - vm->stack);
+			printf("Marking %zx at stack[%zu]\n", slot->u, slot - t->stack);
 #endif /* DEBUG_LOG_GC */
-			markValue(&vm->gc, *slot);
+			markValue(gc, *slot);
 		}
-		if(slot <= vm->stack)
+		if(slot <= t->stack)
 			break;
 #ifdef DEBUG_LOG_GC
-		printf("Marking %zx at stack[%zu]\n", slot->u, slot - vm->stack);
+		printf("Marking %zx at stack[%zu]\n", slot->u, slot - t->stack);
 #endif /* DEBUG_LOG_GC */
-		markValue(&vm->gc, *--slot);	// mark base[-3]
-		assert(slot >= vm->stack);
-		assert(base >= vm->stack + 3);
+		markValue(gc, *--slot);	// mark base[-3]
+		assert(slot >= t->stack);
+		assert(base >= t->stack + 3);
 		if(IS_NIL(*slot)) {
 			base -= AS_IP(base[-2]);
 		} else {
@@ -92,19 +92,24 @@ static void markRoots(VM *vm) {
 			base -= ra + 2;
 		}
 	}
-	assert((vm->stack == NULL) || !IS_OBJ(*vm->stack) || AS_OBJ(*vm->stack)->isBlack);	// Have we traversed the stack all the way to the bottom?
+	assert((t->stack == NULL) || !IS_OBJ(*t->stack) || AS_OBJ(*t->stack)->isBlack);	// Have we traversed the stack all the way to the bottom?
+
+	markValue(gc, t->exception);
+
+	for(ObjUpvalue *u = t->openUpvalues; u != NULL; u = u->next)
+		markObject(gc, (Obj*)u);
+	markCompilerRoots(gc, t);
+}
+
+static void markRoots(VM *vm) {
 	markObject(&vm->gc, (Obj*)vm->initString);
 	markObject(&vm->gc, (Obj*)vm->newString);
-	markValue(&vm->gc, vm->exception);
-
-	for(ObjUpvalue *u = vm->openUpvalues; u != NULL; u = u->next)
-		markObject(&vm->gc, (Obj*)u);
 
 	markObject(&vm->gc, (Obj*)vm->globals);
 	// We don't want to mark the entries, so we'll manually mark vm->strings here.
 	if(vm->strings)
 		((Obj*)vm->strings)->isBlack = true;
-	markCompilerRoots(vm);
+	markObject(&vm->gc, (Obj*)vm->baseThread);
 }
 
 static void blackenObject(GarbageCollector *gc, Obj *o) {
@@ -163,7 +168,8 @@ static void blackenObject(GarbageCollector *gc, Obj *o) {
 		case OBJ_MODULE: {
 			ObjModule *module = (ObjModule*)o;
 			markObject(gc, (Obj*)module->name);
-			markObject(gc, (Obj*)module->items);
+			markObject(gc, (Obj*)module->fields);
+			markObject(gc, (Obj*)module->klass);
 			break;
 		}
 		case OBJ_TABLE:
@@ -184,6 +190,10 @@ static void blackenObject(GarbageCollector *gc, Obj *o) {
 			markObject(gc, (Obj*)s->klass);
 			markObject(gc, (Obj*)s->fields);
 			break;
+		}
+		case OBJ_THREAD: {
+			thread *t = (thread*)o;
+			markThread(gc, t);
 		}
 		case OBJ_NATIVE:
 			break;
@@ -259,6 +269,12 @@ static void freeObject(GarbageCollector *gc, Obj *object) {
 		case OBJ_UPVALUE:
 			FREE(gc, ObjUpvalue, object);
 			break;
+		case OBJ_THREAD: {
+			thread *t = (thread*)object;
+			FREE_ARRAY(gc, Value, t->stack, t->stackLast - t->stack + 1);
+			FREE(gc, thread, object);
+			break;
+		}
 		case OBJ_EXCEPTION:
 			FREE(gc, ObjException, object);
 			break;

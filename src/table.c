@@ -38,19 +38,19 @@ static uint32_t hash(Value v) {
 	return (temp.i & 0xffffffff) ^ (temp.i >> 32);
 }
 
-bool TableInit (VM *vm, int argCount, __attribute__((unused)) Value *args) {
+bool TableInit(VM *vm, thread *currentThread, int argCount) {
 	assert((argCount & 1) == 0);
 
-	incCFrame(vm, 1, argCount + 3);
-	ObjTable *t = newTable(vm, argCount);
-	decCFrame(vm);
-	vm->base[-1] = OBJ_VAL(t);
+	incCFrame(vm, currentThread, 1, argCount + 3);
+	ObjTable *t = newTable(vm, currentThread, argCount);
+	decCFrame(currentThread);
+	currentThread->base[-1] = OBJ_VAL(t);
 
 	for(int i = 0; i<argCount; i+=2) {
-		assert(IS_STRING(vm->base[i]));
-		tableSet(vm, t, vm->base[i], vm->base[i+1]);
+		assert(IS_STRING(currentThread->base[i]));
+		tableSet(vm, t, currentThread->base[i], currentThread->base[i+1]);
 	}
-	vm->base[0] = vm->base[-1];
+	currentThread->base[0] = currentThread->base[-1];
 
 	return true;
 }
@@ -114,7 +114,7 @@ static void adjustCapacity(VM *vm, ObjTable *t, size_t capacityMask) {
 	t->capacityMask = capacityMask;
 }
 
-ObjTable *newTable(VM *vm, size_t count) {
+ObjTable *newTable(VM *vm, thread *currentThread, size_t count) {
 	ObjTable *t = ALLOCATE_OBJ(vm, ObjTable, OBJ_TABLE);
 	t->count = 0;
 	t->capacityMask = 0;
@@ -123,27 +123,27 @@ ObjTable *newTable(VM *vm, size_t count) {
 	t->fields = NULL;
 	if(count == 0) count++;
 	size_t capacityMask = round_up_pow_2(2 * count) - 1;
-	assert(vm->base >= vm->stack);
-	assert(vm->base < vm->stackTop);
-	vm->base[0] = OBJ_VAL(t);
+	assert(currentThread->base >= currentThread->stack);
+	assert(currentThread->base < currentThread->stackTop);
+	currentThread->base[0] = OBJ_VAL(t);
 	adjustCapacity(vm, t, capacityMask);
 
 	return t;
 }
 
-static bool TableNew(VM *vm, int argCount, Value *args) {
+static bool TableNew(VM *vm, thread *currentThread, int argCount) {
 	if(argCount > 1) {
-		ExceptionFormattedStr(vm, "Method 'new' of class 'table' expected 1 argument but got %d.", argCount);
+		ExceptionFormattedStr(vm, currentThread, "Method 'new' of class 'table' expected 1 argument but got %d.", argCount);
 		return false;
 	}
-	if(!IS_NUMBER(args[0])) {
-		ExceptionFormattedStr(vm, "Method 'new' of class 'table' expects it's first argument to be a number.");
+	if(!IS_NUMBER(currentThread->base[0])) {
+		ExceptionFormattedStr(vm, currentThread, "Method 'new' of class 'table' expects it's first argument to be a number.");
 		return false;
 	}
 
-	incCFrame(vm, 1, argCount + 3);
-	args[0] = OBJ_VAL(newTable(vm, (size_t)(AS_NUMBER(args[0]))));
-	decCFrame(vm);
+	incCFrame(vm, currentThread, 1, argCount + 3);
+	currentThread->base[0] = OBJ_VAL(newTable(vm, currentThread, (size_t)(AS_NUMBER(currentThread->base[0]))));
+	decCFrame(currentThread);
 	return true;
 }
 
@@ -234,8 +234,8 @@ void fprintTable(FILE *restrict stream, ObjTable *t) {
 	fprintf(stream, "}");
 }
 
-ObjTable *duplicateTable(VM *vm, ObjTable *source) {
-	ObjTable *dest = newTable(vm, (source->capacityMask+1)/2);
+ObjTable *duplicateTable(VM *vm, thread *currentThread, ObjTable *source) {
+	ObjTable *dest = newTable(vm, currentThread, (source->capacityMask+1)/2);
 	tableAddAll(vm, source, dest);
 	return dest;
 }
